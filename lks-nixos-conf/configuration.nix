@@ -121,15 +121,14 @@
   };
 
   # ─── tmux ─────────────────────────────────────────────────────────────────
-  # Deploys tmux/tmux.conf from this repo as the system-wide tmux config.
+  # Installs tmux system-wide. Config is deployed separately via lks-dev-env/install.sh
+  # which symlinks lks-dev-env/tmux/tmux.conf → ~/.tmux.conf
   # TPM plugins still live in ~/.tmux/plugins/ — bootstrap once per user:
   #   git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
   #   tmux source ~/.tmux.conf  (then prefix + I to install plugins)
-  # which-key.yaml: symlink or copy tmux/which-key.yaml → ~/.config/tmux/which-key.yaml
   programs.tmux = {
-    enable         = true;
-    sensibleOnTop  = false;  # our config handles everything; avoid duplicate settings
-    extraConfig    = builtins.readFile ./tmux/tmux.conf;
+    enable        = true;
+    sensibleOnTop = false;
   };
 
   # ─── direnv ───────────────────────────────────────────────────────────────
@@ -165,7 +164,7 @@
     # [NIXOS/WAYLAND] kitty stays as primary; alacritty below is the Wayland-native minimal
     #                 alternative — uncomment if you prefer it on Sway.
     # tmux — managed by programs.tmux above; listed here only for reference (removed to avoid duplicate)
-    (pkgs.writeShellScriptBin "sessionizer" (builtins.readFile ./scripts/sessionizer))
+    # sessionizer — deployed via lks-dev-env/install.sh → ~/.local/bin/sessionizer
     kitty               # GPU-accelerated terminal, Catppuccin Mocha — works on both platforms
     # alacritty         # [NIXOS/WAYLAND] minimal Wayland-native alternative; uncomment to swap
     bash
