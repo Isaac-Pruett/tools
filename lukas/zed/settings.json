@@ -1,0 +1,111 @@
+// Zed settings
+//
+// For information on how to configure Zed, see the Zed
+// documentation: https://zed.dev/docs/configuring-zed
+//
+// To see all of Zed's default settings without changing your
+// custom settings, run `zed: open default settings` from the
+// command palette (cmd-shift-p / ctrl-shift-p)
+{
+  "project_panel": {
+    "dock": "right",
+    "default_width": 640,
+  },
+  "agent": {
+    "dock": "left",
+    "default_width": 640,
+    "max_content_width": 1000,
+    "favorite_models": [],
+    "model_parameters": [],
+    "inline_assistant_model": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+    },
+  },
+  "terminal": {
+    "dock": "right",
+    "default_width": 640,
+    "default_height": 320,
+    "copy_on_select": true,
+  },
+  "git_panel": {
+    "dock": "right",
+    "default_width": 640,
+  },
+  "outline_panel": {
+    "dock": "right",
+    "default_width": 640,
+  },
+  "collaboration_panel": {
+    "dock": "right",
+    "default_width": 640,
+  },
+  "agent_servers": {
+    "cursor": {
+      "type": "registry",
+    },
+    "codex-acp": {
+      "type": "registry",
+    },
+    "claude-acp": {
+      "type": "registry",
+    },
+  },
+  "languages": {
+    "Nix": {
+      "language_servers": ["nixd"]
+    }
+  },
+  "lsp": {
+    "nixd": {
+      "binary": {
+        "path": "nixd"
+      }
+    }
+  },
+  "base_keymap": "VSCode",
+  "icon_theme": "Zed (Default)",
+  "ui_font_size": 16,
+  "buffer_font_size": 15,
+  "theme": "One Dark Pro Glass",
+  "edit_predictions": {
+    "provider": "copilot",
+  },
+  // "theme_overrides": {
+  //   "One Dark Pro Glass": {
+  //     // Core surfaces
+  //     "background": "#000000",
+  //     "surface.background": "#000000",
+  //     "elevated_surface.background": "#000000",
+  //     "panel.background": "#000000",
+  //     "drop_target.background": "#000000",
+  //     // Editor
+  //     "editor.background": "#000000",
+  //     "editor.gutter.background": "#000000",
+  //     "editor.subheader.background": "#000000",
+  //     // Slightly off-black so active line/highlights remain visible
+  //     "editor.active_line.background": "#0d0d0d",
+  //     "editor.highlighted_line.background": "#0a0a0a",
+  //     "editor.document_highlight.read_background": "#0a0a0a",
+  //     "editor.document_highlight.write_background": "#0d0d0d",
+  //     "editor.document_highlight.bracket_background": "#0a0a0a",
+  //     // Chrome
+  //     "status_bar.background": "#000000",
+  //     "title_bar.background": "#000000",
+  //     "title_bar.inactive_background": "#000000",
+  //     "tab_bar.background": "#000000",
+  //     "tab.active_background": "#111111",
+  //     "tab.inactive_background": "#000000",
+  //     "toolbar.background": "#000000",
+  //     // Scrollbar
+  //     "scrollbar.track.background": "#000000",
+  //     "scrollbar.track.border": "#000000",
+  //     // Interactive elements
+  //     "element.background": "#000000",
+  //     "ghost_element.background": "#000000",
+  //     // Terminal
+  //     "terminal.background": "#000000",
+  //     "terminal.ansi.background": "#000000",
+  //   },
+  // },
+}

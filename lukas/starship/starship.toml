@@ -1,0 +1,51 @@
+# ─── Layout ───────────────────────────────────────────────────────────────────
+format = """
+$directory$git_branch$git_status$nodejs$docker_context$cmd_duration
+$character"""
+
+# ─── Directory ────────────────────────────────────────────────────────────────
+[directory]
+truncation_length   = 2
+truncate_to_repo    = true
+style               = "bold cyan"
+
+# ─── Git ──────────────────────────────────────────────────────────────────────
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = " "
+style  = "bold purple"
+
+[git_status]
+format    = "([$all_status$ahead_behind]($style) )"
+style     = "bold yellow"
+conflicted = "✖ "
+ahead      = "⇡${count} "
+behind     = "⇣${count} "
+diverged   = "⇕ "
+untracked  = "? "
+modified   = "! "
+staged     = "+ "
+deleted    = "✘ "
+
+# ─── Languages (only shown when relevant files are present) ───────────────────
+[nodejs]
+format = "[$symbol$version]($style) "
+symbol = " "
+style  = "green"
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+[docker_context]
+format = "[$symbol$context]($style) "
+symbol = " "
+style  = "blue"
+
+# ─── Command duration (only shown when > 3s) ──────────────────────────────────
+[cmd_duration]
+min_time = 3_000
+format   = "[󱎫 $duration]($style) "
+style    = "bold yellow"
+
+# ─── Prompt character (green = ok, red = error) ───────────────────────────────
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol   = "[❯](bold red)"

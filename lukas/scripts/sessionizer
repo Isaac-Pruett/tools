@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Fuzzy-find a project directory and create or attach to a named tmux session.
+# Works from inside tmux (switches client) or outside (attaches).
+#
+# Dependencies: tmux, fzf
+# Optional:     fd (faster search, falls back to find), eza (richer preview, falls back to ls)
+#
+# Configuration:
+#   SESSIONIZER_ROOTS  colon-separated list of root directories to search (default: $HOME)
+#   SESSIONIZER_DEPTH  max directory depth to search within each root (default: 1)
+
+# ─── Dependencies ─────────────────────────────────────────────────────────────
+if ! command -v tmux &>/dev/null; then
+  echo "sessionizer: tmux is required but not installed" >&2; exit 1
+fi
+if ! command -v fzf &>/dev/null; then
+  echo "sessionizer: fzf is required but not installed" >&2; exit 1
+fi
+
+# ─── Search roots ─────────────────────────────────────────────────────────────
+IFS=: read -ra roots <<< "${SESSIONIZER_ROOTS:-$HOME}"
+depth="${SESSIONIZER_DEPTH:-1}"
+
+# ─── Collect directories ──────────────────────────────────────────────────────
+if command -v fd &>/dev/null; then
+  dir_list=$(
+    fd --type d --no-ignore \
+      --max-depth "$depth" \
+      --exclude '.git' \
+      --exclude 'node_modules' \
+      --exclude '.cache' \
+      --exclude '__pycache__' \
+      --exclude 'target' \
+      --exclude 'build' \
+      . "${roots[@]}" 2>/dev/null
+  )
+else
+  dir_list=$(
+    for root in "${roots[@]}"; do
+      find "$root" -mindepth 1 -maxdepth "$depth" -type d \
+        ! -name '.git' \
+        ! -name 'node_modules' \
+        ! -name '.cache' \
+        ! -name '__pycache__' \
+        ! -name 'target' \
+        ! -name 'build' \
+        2>/dev/null
+    done
+  )
+fi
+
+# ─── Fuzzy pick ───────────────────────────────────────────────────────────────
+if command -v eza &>/dev/null; then
+  preview_cmd='eza --tree --level=2 --icons --color=always {} 2>/dev/null || ls {}'
+else
+  preview_cmd='ls {}'
+fi
+
+selected=$(
+  echo "$dir_list" \
+  | sort -u \
+  | fzf \
+      --prompt="  session › " \
+      --height=50% \
+      --border=rounded \
+      --preview="$preview_cmd" \
+      --preview-window=right:45%
+)
+
+[ -z "$selected" ] && exit 0
+
+# Strip trailing slash that fd (and some find versions) append to directories
+selected="${selected%/}"
+
+# ─── Derive session name ───────────────────────────────────────────────────────
+# Make the name relative to $HOME so ~/dev/foo and ~/work/foo stay distinct:
+#   ~/dev/foo  → dev_foo
+#   ~/work/foo → work_foo
+#   /tmp/foo   → _tmp_foo   (outside HOME: leading _ from the root slash)
+session_name=$(echo "$selected" | sed "s|^$HOME/||;s|^$HOME$|home|" | tr '/.: ' '____')
+
+# ─── Create or attach ─────────────────────────────────────────────────────────
+# = prefix forces exact-name match; plain -t does prefix matching in tmux 3.x,
+# which would cause e.g. 'foo' to match 'foobar' and never create a new session.
+if ! tmux has-session -t "=$session_name" 2>/dev/null; then
+  # No exact-name match — check if a session already owns this directory under a
+  # different name (e.g. manually created, or restored by tmux-resurrect).
+  # Tab separator avoids splitting on colons that may legally appear in paths.
+  # Trailing slash is stripped from session_path: tmux includes it for some sessions.
+  existing=$(tmux list-sessions -F "#{session_name}	#{session_path}" 2>/dev/null \
+    | awk -F'\t' -v dir="$selected" '{ gsub(/\/$/, "", $2); if ($2 == dir) { print $1; exit } }')
+  if [ -n "$existing" ]; then
+    session_name="$existing"
+  else
+    echo "no save found for '${session_name}', starting fresh" >&2
+    tmux new-session -ds "$session_name" -c "$selected"
+  fi
+fi
+
+if [ -n "$TMUX" ]; then
+  tmux switch-client -t "=$session_name"
+else
+  tmux attach-session -t "=$session_name"
+fi

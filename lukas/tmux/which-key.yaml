@@ -1,0 +1,104 @@
+command_alias_start_index: 200
+
+keybindings:
+  prefix_table: Space
+
+title:
+  prefix: " bindings"
+  prefix_style: "fg=#A6E22E,bold"
+
+position:
+  x: R
+  y: P
+
+items:
+  # ── clipboard ──
+  - name: "paste system clipboard"
+    key: v
+    command: run "xclip -selection clipboard -o | tmux load-buffer - && tmux paste-buffer"
+
+  - name: "paste tmux buffer"
+    key: "]"
+    command: paste-buffer
+
+  - separator: true
+
+  # ── pickers ──
+  - name: "thumbs pick  (M-f)"
+    key: f
+    command: run-shell "~/.tmux/plugins/tmux-thumbs/tmux-thumbs.sh"
+
+  - name: "sessionizer  (C-f)"
+    key: s
+    command: display-popup -E -w 60% -h 50% "sessionizer"
+
+  - separator: true
+
+  # ── panes ──
+  - name: "next pane    (M-j)"
+    key: j
+    command: select-pane -t :.+
+
+  - name: "split down"
+    key: '"'
+    command: split-window -v
+
+  - name: "split right"
+    key: "%"
+    command: split-window -h
+
+  - name: "zoom toggle"
+    key: z
+    command: resize-pane -Z
+
+  - name: "kill pane"
+    key: x
+    command: confirm-before kill-pane
+
+  - separator: true
+
+  # ── windows ──
+  - name: "new window"
+    key: c
+    command: new-window
+
+  - name: "next window"
+    key: n
+    command: next-window
+
+  - name: "prev window"
+    key: p
+    command: previous-window
+
+  - name: "kill window"
+    key: "&"
+    command: confirm-before kill-window
+
+  - name: "rename window"
+    key: ","
+    command: command-prompt -I "#W" "rename-window '%%'"
+
+  - separator: true
+
+  # ── sessions ──
+  - name: "detach"
+    key: d
+    command: detach-client
+
+  - name: "rename session"
+    key: "$"
+    command: command-prompt -I "#S" "rename-session '%%'"
+
+  - separator: true
+
+  # ── copy ──
+  - name: "copy mode    (v=sel, y=yank)"
+    key: "["
+    command: copy-mode
+
+  - separator: true
+
+  # ── config ──
+  - name: "reload config"
+    key: r
+    command: source-file ~/.tmux.conf
