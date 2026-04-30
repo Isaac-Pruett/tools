@@ -143,7 +143,7 @@
     noto-fonts
     noto-fonts-emoji
     liberation_ttf
-    (nerdfonts.override { fonts = [ "FiraCode" "JetBrainsMono" ]; })
+    (nerdfonts.override { fonts = [ "FiraCode" "JetBrainsMono" "GeistMono" ]; })
   ];
 
   # ─── Environment Variables ────────────────────────────────────────────────
