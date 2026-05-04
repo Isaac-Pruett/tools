@@ -5,7 +5,7 @@ $character"""
 
 # ─── Directory ────────────────────────────────────────────────────────────────
 [directory]
-truncation_length   = 2
+truncation_length   = 3
 truncate_to_repo    = true
 style               = "bold cyan"
 

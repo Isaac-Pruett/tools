@@ -28,6 +28,7 @@
         lazygit  = pkgs.lazygit;
         delta    = pkgs.delta;
         socat    = pkgs.socat;
+        minicom  = pkgs.minicom;
       };
 
       devShells.default = pkgs.mkShell {
