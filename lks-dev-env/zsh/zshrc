@@ -1,0 +1,82 @@
+# ─── History ──────────────────────────────────────────────────────────────────
+HISTFILE=~/.zsh_history
+HISTSIZE=50000
+SAVEHIST=50000
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_SPACE
+setopt SHARE_HISTORY
+setopt EXTENDED_HISTORY
+
+# ─── Completion ───────────────────────────────────────────────────────────────
+autoload -Uz compinit && compinit
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
+
+# ─── Nix ──────────────────────────────────────────────────────────────────────
+[ -f /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ] && \
+  source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+
+# ─── Secrets ──────────────────────────────────────────────────────────────────
+[ -f "$HOME/.secrets" ] && source "$HOME/.secrets"
+
+# ─── Path ─────────────────────────────────────────────────────────────────────
+export PATH="$HOME/.local/bin:$PATH"
+
+# ─── Aliases ──────────────────────────────────────────────────────────────────
+alias grep='grep --color=auto'
+
+# eza replaces ls
+alias ls='eza --icons'
+alias ll='eza -la --icons --git'
+alias la='eza -a --icons'
+alias lt='eza --tree --icons -L 2'
+
+# bat replaces cat
+alias cat='bat --paging=never'
+
+# ─── Zsh plugins ──────────────────────────────────────────────────────────────
+# check user profile first, fall back to system (NixOS system packages)
+_load_plugin() {
+  for base in "$HOME/.nix-profile/share" "/run/current-system/sw/share"; do
+    [ -f "$base/$1" ] && source "$base/$1" && return
+  done
+}
+_load_plugin "zsh-autosuggestions/zsh-autosuggestions.zsh"
+# zsh-syntax-highlighting must be sourced last
+_load_plugin "zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+unset -f _load_plugin
+
+# ─── Autosuggestion accept bindings ───────────────────────────────────────────
+bindkey '\e[32;9u' autosuggest-accept
+bindkey '\e[1;2C'  autosuggest-accept
+
+# ─── fzf (Ctrl+T file search, Alt+C fuzzy cd — Ctrl+R handed to atuin) ───────
+[ -f "$HOME/.nix-profile/share/fzf/completion.zsh" ] && \
+  source "$HOME/.nix-profile/share/fzf/completion.zsh"
+[ -f "$HOME/.nix-profile/share/fzf/key-bindings.zsh" ] && \
+  source "$HOME/.nix-profile/share/fzf/key-bindings.zsh"
+
+# ─── zoxide (smart cd) ────────────────────────────────────────────────────────
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
+
+# ─── atuin (shell history — Ctrl+R) ──────────────────────────────────────────
+command -v atuin &>/dev/null && eval "$(atuin init zsh --disable-up-arrow)"
+
+# ─── direnv ───────────────────────────────────────────────────────────────────
+command -v direnv &>/dev/null && eval "$(direnv hook zsh)"
+
+# ─── Sessionizer (Ctrl+F) ─────────────────────────────────────────────────────
+bindkey -s '^f' 'sessionizer\n'
+
+# ─── Kitty tab title (folder name at rest, "cmd  folder" while running) ──────
+autoload -Uz add-zsh-hook
+_tab_title_precmd()  { printf '\033]0;%s\007' "${PWD##*/}" }
+_tab_title_preexec() { printf '\033]0;%s  %s\007' "${1%% *}" "${PWD##*/}" }
+add-zsh-hook precmd  _tab_title_precmd
+add-zsh-hook preexec _tab_title_preexec
+
+# ─── Starship prompt ──────────────────────────────────────────────────────────
+command -v starship &>/dev/null && eval "$(starship init zsh)"
+
+# ─── Machine-local overrides ──────────────────────────────────────────────────
+[ -f "$HOME/.zshrc.local" ] && source "$HOME/.zshrc.local"

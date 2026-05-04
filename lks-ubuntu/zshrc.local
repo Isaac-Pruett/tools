@@ -1,0 +1,5 @@
+# ─── Ubuntu-specific PATH additions ───────────────────────────────────────────
+export PATH="$PATH:/opt/nvim-linux-x86_64/bin"
+
+# ─── Ubuntu-specific aliases ──────────────────────────────────────────────────
+alias zen='/opt/zen/zen &'

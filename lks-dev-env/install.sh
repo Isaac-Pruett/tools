@@ -21,27 +21,18 @@ esac
 
 echo "platform: $PLATFORM"
 
-# ─── Zed config path (platform-specific) ──────────────────────────────────────
-case "$PLATFORM" in
-  mac)  ZED_CONFIG="$HOME/Library/Application Support/Zed" ;;
-  *)    ZED_CONFIG="$HOME/.config/zed" ;;
-esac
-
 # ─── Create directories ────────────────────────────────────────────────────────
 mkdir -p \
   "$HOME/.config/kitty" \
-  "$HOME/.config/zed" \
   "$HOME/.local/bin" \
-  "$HOME/.tmux" \
-  "$ZED_CONFIG"
+  "$HOME/.tmux"
 
 # ─── Symlink dotfiles ──────────────────────────────────────────────────────────
+ln -sf "$REPO/zsh/zshrc"              "$HOME/.zshrc"
 ln -sf "$REPO/kitty/kitty.conf"       "$HOME/.config/kitty/kitty.conf"
 ln -sf "$REPO/tmux/tmux.conf"         "$HOME/.tmux.conf"
 ln -sf "$REPO/tmux/keybinds.md"       "$HOME/.tmux/keybinds.md"
 ln -sf "$REPO/starship/starship.toml" "$HOME/.config/starship.toml"
-ln -sf "$REPO/zed/settings.json"      "$ZED_CONFIG/settings.json"
-ln -sf "$REPO/zed/keymap.json"        "$ZED_CONFIG/keymap.json"
 ln -sf "$REPO/scripts/sessionizer"    "$HOME/.local/bin/sessionizer"
 chmod +x "$HOME/.local/bin/sessionizer"
 

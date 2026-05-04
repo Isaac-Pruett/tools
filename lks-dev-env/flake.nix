@@ -29,6 +29,8 @@
         delta    = pkgs.delta;
         socat    = pkgs.socat;
         minicom  = pkgs.minicom;
+        zsh-autosuggestions     = pkgs.zsh-autosuggestions;
+        zsh-syntax-highlighting = pkgs.zsh-syntax-highlighting;
       };
 
       devShells.default = pkgs.mkShell {
