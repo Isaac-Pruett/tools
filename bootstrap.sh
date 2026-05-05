@@ -75,6 +75,7 @@ nix_install "lazygit"                 lazygit                 cmd:lazygit
 nix_install "delta"                   delta                   cmd:delta
 nix_install "socat"                   socat                   cmd:socat
 nix_install "minicom"                 minicom                 cmd:minicom
+nix_install "btop"                    btop                    cmd:btop
 
 # ─── 3. Configs ───────────────────────────────────────────────────────────────
 log "configs"
