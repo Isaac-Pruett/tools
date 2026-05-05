@@ -43,6 +43,11 @@
   n / N        next / prev match
   q / Esc      exit copy mode
 
+  M-h / M-l    jump word left / right
+  M-j / M-k    scroll line down / up
+  M-H / M-L    jump to line start / end
+  M-J / M-K    half-page down / up
+
  CLIPBOARD
 ──────────────────────────────────────────────────────────────
   prefix v     paste from system clipboard
