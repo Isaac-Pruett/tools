@@ -34,7 +34,8 @@ ln -sf "$REPO/tmux/tmux.conf"         "$HOME/.tmux.conf"
 ln -sf "$REPO/tmux/keybinds.md"       "$HOME/.tmux/keybinds.md"
 ln -sf "$REPO/starship/starship.toml" "$HOME/.config/starship.toml"
 ln -sf "$REPO/scripts/sessionizer"    "$HOME/.local/bin/sessionizer"
-chmod +x "$HOME/.local/bin/sessionizer"
+ln -sf "$REPO/scripts/clip-copy"      "$HOME/.local/bin/clip-copy"
+chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/clip-copy"
 
 # ─── Platform notes ────────────────────────────────────────────────────────────
 echo ""
@@ -42,18 +43,11 @@ echo "dotfiles linked from $REPO"
 echo ""
 
 case "$PLATFORM" in
-  linux)
-    echo "note: tmux clipboard uses xclip (X11). On Wayland swap xclip for wl-copy in tmux/tmux.conf"
-    ;;
   wsl)
-    echo "note: tmux clipboard uses xclip. In WSL you may want clip.exe instead:"
-    echo "  sed -i 's/xclip -selection clipboard -i/clip.exe/g' tmux/tmux.conf"
+    echo "note: tmux clipboard — WSL may need clip.exe. Edit scripts/clip-copy if wl-copy/xsel aren't available."
     ;;
   mac)
-    echo "note: tmux clipboard uses xclip — not available on macOS. Swap for pbcopy in tmux/tmux.conf:"
-    echo "  sed -i '' 's/xclip -selection clipboard -i/pbcopy/g' tmux/tmux.conf"
-    echo "  sed -i '' 's/xclip -selection clipboard -o/pbpaste/g' tmux/tmux.conf"
-    echo ""
+    echo "note: tmux clipboard — macOS needs pbcopy/pbpaste. Edit scripts/clip-copy to add a Darwin branch."
     echo "note: kitty shell path uses ~/.nix-profile/bin/zsh — update if using homebrew zsh:"
     echo "  /opt/homebrew/bin/zsh  or  /usr/local/bin/zsh"
     ;;

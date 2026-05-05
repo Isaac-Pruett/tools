@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Route stdin to the system clipboard, preferring Wayland over X11.
+# Used by tmux copy bindings so clipboard works reliably on both.
+if [ -n "$WAYLAND_DISPLAY" ]; then
+    wl-copy
+elif [ -n "$DISPLAY" ]; then
+    xsel --clipboard --input
+fi
