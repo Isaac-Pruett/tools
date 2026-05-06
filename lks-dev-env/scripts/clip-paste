@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Read from the system clipboard to stdout, preferring Wayland over X11.
+# Used by tmux paste bindings so clipboard works reliably on both.
+if [ -n "$WAYLAND_DISPLAY" ]; then
+    wl-paste --no-newline
+elif [ -n "$DISPLAY" ]; then
+    xsel --clipboard --output
+fi

@@ -35,7 +35,8 @@ ln -sf "$REPO/tmux/keybinds.md"       "$HOME/.tmux/keybinds.md"
 ln -sf "$REPO/starship/starship.toml" "$HOME/.config/starship.toml"
 ln -sf "$REPO/scripts/sessionizer"    "$HOME/.local/bin/sessionizer"
 ln -sf "$REPO/scripts/clip-copy"      "$HOME/.local/bin/clip-copy"
-chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/clip-copy"
+ln -sf "$REPO/scripts/clip-paste"     "$HOME/.local/bin/clip-paste"
+chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/clip-copy" "$HOME/.local/bin/clip-paste"
 
 # ─── Platform notes ────────────────────────────────────────────────────────────
 echo ""
