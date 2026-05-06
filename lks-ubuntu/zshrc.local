@@ -3,3 +3,6 @@ export PATH="$PATH:/opt/nvim-linux-x86_64/bin"
 
 # ─── Ubuntu-specific aliases ──────────────────────────────────────────────────
 alias zen='/opt/zen/zen &'
+
+# ─── SSH shortcuts ────────────────────────────────────────────────────────────
+alias remote-host='ssh -t user@myhost-remote zsh -l'
