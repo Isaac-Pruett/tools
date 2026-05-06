@@ -7,7 +7,7 @@
 
   # ─── Networking ───────────────────────────────────────────────────────────
   # Change hostName per machine
-  networking.hostName = "workstation";
+  networking.hostName = "boltbox";
   networking.networkmanager.enable = true;
 
   # ─── Locale & Time ────────────────────────────────────────────────────────
