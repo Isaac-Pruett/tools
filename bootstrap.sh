@@ -11,6 +11,13 @@ FLAKE="path:$REPO/lks-dev-env"
 UBUNTU=false
 [[ "${1:-}" == "--ubuntu" ]] && UBUNTU=true
 
+# detect display server — used to install the right clipboard backend
+if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  DISPLAY_SERVER="wayland"
+else
+  DISPLAY_SERVER="x11"
+fi
+
 # ─── Output helpers ───────────────────────────────────────────────────────────
 log()  { printf '\n── %s\n' "$*"; }
 ok()   { printf '  ✓ %s\n' "$*"; }
@@ -108,8 +115,17 @@ else
   if ! grep -qF "$ZSH_BIN" /etc/shells 2>/dev/null; then
     echo "$ZSH_BIN" | sudo tee -a /etc/shells > /dev/null
   fi
-  chsh -s "$ZSH_BIN"
-  ok "shell changed to zsh — restart your terminal"
+  if chsh -s "$ZSH_BIN" 2>/dev/null; then
+    ok "shell changed to zsh — restart your terminal"
+  else
+    # chsh failed (common on NixOS managed machines) — fall back to exec zsh from .bashrc
+    BASHRC="$HOME/.bashrc"
+    MARKER="# lks-bootstrap: exec zsh"
+    if ! grep -qF "$MARKER" "$BASHRC" 2>/dev/null; then
+      printf '\n%s\n[ -z "$ZSH_VERSION" ] && command -v zsh &>/dev/null && exec zsh\n' "$MARKER" >> "$BASHRC"
+    fi
+    ok "chsh unavailable — added exec zsh to ~/.bashrc (takes effect on next login)"
+  fi
 fi
 
 # ─── Done ─────────────────────────────────────────────────────────────────────

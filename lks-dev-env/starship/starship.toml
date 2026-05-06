@@ -1,7 +1,18 @@
 # ─── Layout ───────────────────────────────────────────────────────────────────
 format = """
-$directory$git_branch$git_status$nodejs$docker_context$cmd_duration
+$username$hostname$directory$git_branch$git_status$nodejs$docker_context$cmd_duration
 $character"""
+
+# ─── SSH user@host (only shown when connected via SSH) ────────────────────────
+[username]
+format    = "[$user]($style)@"
+style_user = "bold yellow"
+show_always = false
+
+[hostname]
+format    = "[$hostname]($style) "
+style     = "bold yellow"
+ssh_only  = true
 
 # ─── Directory ────────────────────────────────────────────────────────────────
 [directory]
