@@ -5,15 +5,15 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStartPre=/usr/bin/install -d -m 700 -o root -g root /run/sticky-fingers
 ExecStart=/nix/var/nix/profiles/default/bin/sticky-fingers
 Restart=on-failure
 RestartSec=2
+RuntimeDirectory=sticky-fingers
+RuntimeDirectoryMode=0700
 
 # Hardening — still needs root for /dev/input access, but locks down everything else.
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/run/sticky-fingers
 PrivateTmp=true
 PrivateNetwork=true
 NoNewPrivileges=true
