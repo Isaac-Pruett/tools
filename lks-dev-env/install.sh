@@ -29,6 +29,7 @@ mkdir -p \
 
 # ─── Symlink dotfiles ──────────────────────────────────────────────────────────
 ln -sf "$REPO/zsh/zshrc"              "$HOME/.zshrc"
+ln -sf "$REPO/zsh/zshenv"             "$HOME/.zshenv"
 ln -sf "$REPO/kitty/kitty.conf"       "$HOME/.config/kitty/kitty.conf"
 ln -sf "$REPO/tmux/tmux.conf"         "$HOME/.tmux.conf"
 ln -sf "$REPO/tmux/keybinds.md"       "$HOME/.tmux/keybinds.md"

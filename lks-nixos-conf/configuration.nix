@@ -127,8 +127,7 @@
   #   git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
   #   tmux source ~/.tmux.conf  (then prefix + I to install plugins)
   programs.tmux = {
-    enable        = true;
-    sensibleOnTop = false;
+    enable = true;
   };
 
   # ─── direnv ───────────────────────────────────────────────────────────────

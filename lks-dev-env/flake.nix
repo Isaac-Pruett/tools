@@ -30,6 +30,16 @@
         socat    = pkgs.socat;
         minicom  = pkgs.minicom;
         btop     = pkgs.btop;
+        nethogs  = pkgs.nethogs;
+
+        sticky-fingers = pkgs.rustPlatform.buildRustPackage {
+          pname   = "sticky-fingers";
+          version = "0.1.0";
+          src     = ./sticky-fingers;
+          cargoLock.lockFile = ./sticky-fingers/Cargo.lock;
+          # Strip + LTO already in Cargo.toml release profile.
+          meta.description = "Hyper-lightweight evdev keystroke logger";
+        };
         zsh-autosuggestions     = pkgs.zsh-autosuggestions;
         zsh-syntax-highlighting = pkgs.zsh-syntax-highlighting;
         wl-clipboard            = pkgs.wl-clipboard;

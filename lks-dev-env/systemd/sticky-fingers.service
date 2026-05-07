@@ -1,0 +1,30 @@
+[Unit]
+Description=sticky-fingers (per-boot keystroke logger, tmpfs)
+Documentation=https://example.invalid/sticky-fingers
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/install -d -m 700 -o root -g root /run/sticky-fingers
+ExecStart=/nix/var/nix/profiles/default/bin/sticky-fingers
+Restart=on-failure
+RestartSec=2
+
+# Hardening — still needs root for /dev/input access, but locks down everything else.
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/sticky-fingers
+PrivateTmp=true
+PrivateNetwork=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+# Loaded for ALL zsh invocations (interactive, non-interactive, scripts).
+# Keep this file minimal — only env vars that every shell needs.
+
+export EDITOR=hx
+export VISUAL=hx
+
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"

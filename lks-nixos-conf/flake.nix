@@ -11,9 +11,12 @@
     # Zen Browser — not in nixpkgs (reverted); community flake is the NixOS-native approach
     zen-browser.url = "github:youwen5/zen-browser-flake";
     zen-browser.inputs.nixpkgs.follows = "nixpkgs-unstable";
+
+    # Local sub-flake — provides sticky-fingers (and other portable dev-env packages)
+    lks-dev-env.url = "path:../lks-dev-env";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, zen-browser, ... }:
+  outputs = { self, nixpkgs, nixpkgs-unstable, zen-browser, lks-dev-env, ... }:
     let
       system = "x86_64-linux";
 
@@ -35,10 +38,12 @@
         specialArgs = {
           inherit pkgs-unstable;
           zen-browser-pkg = zen-browser.packages.${system}.default;
+          sticky-fingers-pkg  = lks-dev-env.packages.${system}.sticky-fingers;
         };
         modules = [
           ./configuration.nix
           ./hardware-configuration.nix
+          ./sticky-fingers.nix
         ];
       };
 
