@@ -6,7 +6,7 @@
   M-j          last active pane (MRU toggle)
   M-o          next pane (cycle)
   M-h          enter copy mode
-  M-f          thumbs picker (yank text from screen)
+  M-t          thumbs picker (yank text from screen)
   C-f          sessionizer
 
  PANES                                          prefix then:
