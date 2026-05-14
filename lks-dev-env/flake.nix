@@ -25,6 +25,7 @@
         zoxide   = pkgs.zoxide;
         atuin    = pkgs.atuin;
         helix    = pkgs.helix;
+        neovim   = pkgs.neovim;
         lazygit  = pkgs.lazygit;
         delta    = pkgs.delta;
         socat    = pkgs.socat;
