@@ -10,7 +10,7 @@ echo ""
 echo "═══ ubuntu-promax14 profile ═══"
 echo ""
 
-# ─── 0. Wrapper shims into ~/.local/bin ───────────────────────────────────────
+# ─── 0a. Wrapper shims into ~/.local/bin ──────────────────────────────────────
 # Wrappers needed for this machine (e.g. kitty needs nixGLIntel for OpenGL on
 # Ubuntu + nix-installed kitty). Symlinked so they're tracked in the repo.
 if [[ -d "$PROFILE_DIR/wrappers" ]]; then
@@ -21,6 +21,20 @@ if [[ -d "$PROFILE_DIR/wrappers" ]]; then
     target="$HOME/.local/bin/$(basename "$w")"
     ln -sfn "$w" "$target"
     echo "  $target → $w"
+  done
+fi
+
+# ─── 0b. Profile-specific scripts into ~/.local/bin ───────────────────────────
+# Helper scripts that this profile owns (e.g. `cockpit` — the 3-window
+# multi-monitor launcher for this Dell + Samsung + LG setup).
+if [[ -d "$PROFILE_DIR/scripts" ]]; then
+  echo "→ scripts: symlinking into ~/.local/bin/"
+  mkdir -p "$HOME/.local/bin"
+  for s in "$PROFILE_DIR/scripts"/*; do
+    [[ -f "$s" ]] || continue
+    target="$HOME/.local/bin/$(basename "$s")"
+    ln -sfn "$s" "$target"
+    echo "  $target → $s"
   done
 fi
 
@@ -41,6 +55,18 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   sudo apt-get install -y "${missing[@]}"
 else
   echo "  all already installed"
+fi
+
+# ─── 1.5 Ghostty via PPA (auto-updates via apt going forward) ─────────────────
+# PPA is community-maintained by Mike Kasberg, recommended by Ghostty's docs.
+# Skips entirely if ghostty is already installed.
+if ! command -v ghostty >/dev/null 2>&1; then
+  echo "→ ghostty: installing via mkasberg/ghostty-ubuntu PPA"
+  sudo add-apt-repository -y ppa:mkasberg/ghostty-ubuntu
+  sudo apt-get update
+  sudo apt-get install -y ghostty
+else
+  echo "→ ghostty: already installed ($(ghostty +version 2>/dev/null | head -1))"
 fi
 
 # ─── 2. Hint-mode navigation (warpd) ──────────────────────────────────────────

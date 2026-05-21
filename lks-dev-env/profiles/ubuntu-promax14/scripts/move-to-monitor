@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# move-to-monitor <1|2|3>  — move the focused window to monitor N (sorted left→right)
+# Requires: xdotool, wmctrl
+
+TARGET=${1:?Usage: move-to-monitor <1|2|3>}
+
+mapfile -t mons < <(
+    xrandr --query | grep ' connected' |
+    grep -oP '\d+x\d+\+\d+\+\d+' |
+    awk -F'[x+]' '{ print $3, $1, $2 }' |
+    sort -n
+)
+
+MON="${mons[$((TARGET - 1))]}"
+[[ -z "$MON" ]] && { echo "Monitor $TARGET not found (have ${#mons[@]})"; exit 1; }
+
+read -r ox ow oh <<< "$MON"
+
+WIN=$(xdotool getactivewindow)
+WIN_HEX=$(printf '0x%x' "$WIN")
+
+wmctrl -ir "$WIN_HEX" -b remove,maximized_vert,maximized_horz
+sleep 0.1
+xdotool windowmove --sync "$WIN" $((ox + ow / 2 - 100)) $((oh / 2 - 100))
+sleep 0.1
+wmctrl -ir "$WIN_HEX" -b add,maximized_vert,maximized_horz

@@ -27,20 +27,56 @@ gsettings set org.gnome.desktop.wm.keybindings cycle-windows-backward  "['<Shift
 KB_BASE='/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings'
 SCHEMA='org.gnome.settings-daemon.plugins.media-keys.custom-keybinding'
 
-# custom0 — Ctrl+Alt+T → kitty (via wrapper for nixGLIntel)
-# ABSOLUTE PATH is required: gsd-media-keys spawns shortcuts with a PATH that
-# puts ~/.nix-profile/bin BEFORE ~/.local/bin. PATH-resolving "kitty" finds
-# the bare nix-kitty (no GL libs) → GLX failure → no window. Pointing at the
-# wrapper directly sidesteps the PATH ordering.
-# Future: swap to ghostty by changing the binary path here.
-gsettings set "$SCHEMA:$KB_BASE/custom0/" name    'open terminal (kitty)'
-gsettings set "$SCHEMA:$KB_BASE/custom0/" command "$HOME/.local/bin/kitty"
+# custom0 — Ctrl+Alt+T → ghostty
+# ghostty is apt-installed via the mkasberg PPA → /usr/bin/ghostty, uses system
+# Mesa directly (no nixGL wrapper needed). Switched from kitty 2026-05-21.
+# Kitty wrapper at ~/.local/bin/kitty still exists as fallback — launch via app
+# menu or `kitty &` if needed.
+gsettings set "$SCHEMA:$KB_BASE/custom0/" name    'open terminal (ghostty)'
+gsettings set "$SCHEMA:$KB_BASE/custom0/" command '/usr/bin/ghostty'
 gsettings set "$SCHEMA:$KB_BASE/custom0/" binding '<Control><Alt>t'
+
+# custom1 — Shift+Alt+S → Frog OCR (text extraction from screen)
+gsettings set "$SCHEMA:$KB_BASE/custom1/" name    'Frog OCR'
+gsettings set "$SCHEMA:$KB_BASE/custom1/" command 'flatpak run com.github.tenderowl.frog'
+gsettings set "$SCHEMA:$KB_BASE/custom1/" binding '<Shift><Alt>s'
+
+# custom2 — Shift+Ctrl+Esc → GNOME System Monitor (Task-Manager-equivalent)
+gsettings set "$SCHEMA:$KB_BASE/custom2/" name    'System Monitor'
+gsettings set "$SCHEMA:$KB_BASE/custom2/" command 'gnome-system-monitor'
+gsettings set "$SCHEMA:$KB_BASE/custom2/" binding '<Shift><Control>Escape'
+
+# cockpit (named slot) — Super+Shift+Return → cockpit 3-monitor launcher
+# Uses a string slot name instead of customN — GNOME accepts arbitrary slot
+# names in the array; named is clearer than re-using a numeric.
+gsettings set "$SCHEMA:$KB_BASE/cockpit/" name    'Cockpit launcher (3-monitor multi-window)'
+gsettings set "$SCHEMA:$KB_BASE/cockpit/" command "$HOME/.local/bin/cockpit"
+gsettings set "$SCHEMA:$KB_BASE/cockpit/" binding '<Super><Shift>Return'
+
+# custom5/6/7 — Super+Alt+1/2/3 → move focused window to monitor 1/2/3
+# Was Alt+1/2/3 originally — moved to Super+Alt because plain Alt+N collides
+# with app shortcuts (terminal tab switch, browser tab switch, Slack sidebar).
+# move-to-monitor script lives in profile scripts/ — symlinked into PATH.
+gsettings set "$SCHEMA:$KB_BASE/custom5/" name    'Move window to monitor 1'
+gsettings set "$SCHEMA:$KB_BASE/custom5/" command "$HOME/.local/bin/move-to-monitor 1"
+gsettings set "$SCHEMA:$KB_BASE/custom5/" binding '<Super><Alt>1'
+gsettings set "$SCHEMA:$KB_BASE/custom6/" name    'Move window to monitor 2'
+gsettings set "$SCHEMA:$KB_BASE/custom6/" command "$HOME/.local/bin/move-to-monitor 2"
+gsettings set "$SCHEMA:$KB_BASE/custom6/" binding '<Super><Alt>2'
+gsettings set "$SCHEMA:$KB_BASE/custom7/" name    'Move window to monitor 3'
+gsettings set "$SCHEMA:$KB_BASE/custom7/" command "$HOME/.local/bin/move-to-monitor 3"
+gsettings set "$SCHEMA:$KB_BASE/custom7/" binding '<Super><Alt>3'
+
+# ─── Clean up stale orphan slots ──────────────────────────────────────────────
+# custom4 used to hold the kitty Ctrl+Alt+T binding before we moved to ghostty
+# at custom0. It's dormant but lingering in dconf — remove so future audits
+# don't get confused.
+dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 
 # ─── Register all owned slots ─────────────────────────────────────────────────
 # Build the array from the explicit list above. ANY future custom binding must
-# be added to BOTH a new custom<N>/ block AND this array literal.
+# be added to BOTH a new slot block AND this array literal.
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['$KB_BASE/custom0/']"
+  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/']"
 
 echo "→ gsettings: done"

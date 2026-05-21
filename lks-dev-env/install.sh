@@ -38,6 +38,8 @@ ln -sf "$REPO/scripts/sessionizer"    "$HOME/.local/bin/sessionizer"
 ln -sf "$REPO/scripts/clip-copy"      "$HOME/.local/bin/clip-copy"
 ln -sf "$REPO/scripts/clip-paste"     "$HOME/.local/bin/clip-paste"
 ln -sfn "$REPO/lazyvim"               "$HOME/.config/nvim"
+mkdir -p "$HOME/.config/ghostty"
+ln -sf "$REPO/ghostty/config"         "$HOME/.config/ghostty/config"
 chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/clip-copy" "$HOME/.local/bin/clip-paste"
 
 # ─── Platform notes ────────────────────────────────────────────────────────────

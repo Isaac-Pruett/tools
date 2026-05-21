@@ -1,0 +1,114 @@
+# Ghostty config — ported from lks-dev-env/kitty/kitty.conf
+#
+# Reference: https://ghostty.org/docs/config/reference
+# Symlinked to ~/.config/ghostty/config by install.sh.
+
+# ─── Font ─────────────────────────────────────────────────────────────────────
+font-family = GeistMono Nerd Font
+font-size = 13
+
+# ─── Shell ────────────────────────────────────────────────────────────────────
+# Pin explicitly so ghostty always launches zsh regardless of session $SHELL
+command = /home/lukas-shipley/.nix-profile/bin/zsh --login
+
+# ─── Performance ──────────────────────────────────────────────────────────────
+# Ghostty uses its own GPU renderer; no equivalent to kitty's
+# sync_to_monitor / repaint_delay / input_delay knobs (handled internally).
+
+# ─── Window ───────────────────────────────────────────────────────────────────
+window-decoration = false
+window-padding-x = 8
+window-padding-y = 8
+window-save-state = always
+
+# ─── Cursor ───────────────────────────────────────────────────────────────────
+cursor-style = block
+cursor-style-blink = true
+cursor-color = #FD971F
+
+# Ghostty equivalent of kitty's cursor_trail — not yet supported (as of v1.3).
+# Track upstream; revisit when added.
+# Hollow-on-unfocus also not directly supported in v1.3.
+
+# ─── Bell ─────────────────────────────────────────────────────────────────────
+# Ghostty uses `bell-features` instead of separate audible/visual booleans.
+# Default is `system,audio,attention,title`. We omit `audio` to silence the
+# beep and omit `attention` since on X11 attention requests are noisy.
+bell-features = system,title
+
+# ─── Scrollback ───────────────────────────────────────────────────────────────
+# Ghostty doesn't strip trailing comments on the same line as a value; keep
+# notes above. Value is bytes (~10MB ≈ kitty's 10000 lines on a typical terminal).
+scrollback-limit = 10485760
+
+# ─── Mouse / clipboard ────────────────────────────────────────────────────────
+copy-on-select = clipboard
+clipboard-read = allow
+clipboard-write = allow
+clipboard-paste-protection = true
+
+# ─── Theme: AMOLED Black + Monokai ────────────────────────────────────────────
+background = #000000
+foreground = #F8F8F2
+cursor-text = #000000
+selection-background = #49483E
+selection-foreground = #F8F8F2
+
+# palette: index=hex (Ghostty's format)
+# Black
+palette = 0=#272822
+palette = 8=#75715E
+# Red
+palette = 1=#F92672
+palette = 9=#F92672
+# Green
+palette = 2=#A6E22E
+palette = 10=#A6E22E
+# Yellow
+palette = 3=#E6DB74
+palette = 11=#E6DB74
+# Blue / Cyan (Monokai uses cyan as its "blue")
+palette = 4=#66D9EF
+palette = 12=#66D9EF
+# Magenta / Purple
+palette = 5=#AE81FF
+palette = 13=#AE81FF
+# Cyan
+palette = 6=#A1EFE4
+palette = 14=#A1EFE4
+# White
+palette = 7=#F8F8F2
+palette = 15=#F9F8F5
+
+# ─── Keybindings ──────────────────────────────────────────────────────────────
+# Alt+Left/Right → emacs-mode word-jump (zsh has \eb / \ef bound to backward/forward-word).
+# Ghostty's `text:` action sends literal bytes — equivalent of kitty's `send_text`.
+keybind = alt+left=text:\x1bb
+keybind = alt+right=text:\x1bf
+
+# Reload config — Ghostty's built-in default is `Ctrl+Shift+,` but expose it
+# explicitly for parity with kitty's ctrl+shift+f5.
+keybind = ctrl+shift+f5=reload_config
+
+# ─── Tab bar ──────────────────────────────────────────────────────────────────
+# Ghostty's tab bar is more limited than kitty's powerline-styled tabs.
+# Defaults are sensible; theming follows the active palette.
+gtk-tabs-location = top
+gtk-titlebar = false
+
+# ─── URLs ─────────────────────────────────────────────────────────────────────
+# Default URL detection + ctrl-click open. No equivalent to kitty's `url_style curly`
+# but the underline-on-hover is on by default.
+
+# ─── Linux-specific ───────────────────────────────────────────────────────────
+# `desktop` value was rejected in v1.3; use boolean for now.
+gtk-single-instance = false
+
+# Help Ghostty inject zsh shell integration even when `command =` is set to an
+# absolute path that doesn't trivially parse as a known shell.
+shell-integration = zsh
+# `cursor` removed from integration features so the shell stops sending
+# DECSCUSR shape escapes at every prompt — keeps `cursor-style = block` sticky.
+# Modal editors (Helix/LazyVim) still send their own shape escapes per mode,
+# which is what we want for vim-style block↔beam transitions inside the editor.
+shell-integration-features = sudo,title

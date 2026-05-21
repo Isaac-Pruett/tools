@@ -75,8 +75,62 @@ _tab_title_preexec() { printf '\033]0;%s  %s\007' "${1%% *}" "${PWD##*/}" }
 add-zsh-hook precmd  _tab_title_precmd
 add-zsh-hook preexec _tab_title_preexec
 
+# ─── Force blinking block cursor at every prompt ─────────────────────────────
+# DECSCUSR \e[1 q = blinking block. Modal editors (Helix, LazyVim) override
+# this for their own mode-aware cursor while running; the next prompt redraw
+# after they exit resets us back to block-blink for the shell.
+_cursor_block_blink() { printf '\e[1 q' }
+add-zsh-hook precmd _cursor_block_blink
+# Set once at startup too — first prompt hasn't drawn yet so precmd hasn't fired.
+[[ -o interactive ]] && printf '\e[1 q'
+
 # ─── Starship prompt ──────────────────────────────────────────────────────────
 command -v starship &>/dev/null && eval "$(starship init zsh)"
+
+# ─── Auto-launch tmux for interactive shells outside tmux ────────────────────
+# Each new ghostty/kitty/tty gets its OWN tmux session so they don't fight over
+# resize. Behavior:
+#   • If `main` doesn't exist yet → create + attach to `main` (your "primary")
+#   • If `main` exists and is unattached → attach to it (resume on Ctrl+Alt+T)
+#   • If `main` exists AND is already attached elsewhere → create a fresh
+#     session with a random 3-5-letter name (e.g. `qfx`, `vehfx`, `kobu`)
+# Names come from /dev/urandom; cost is < 100µs per launch, negligible.
+# Toggle off by setting NO_TMUX_AUTO=1.
+if [[ -o interactive ]] \
+  && [[ -z "$TMUX" ]] \
+  && [[ -z "$NO_TMUX_AUTO" ]] \
+  && command -v tmux &>/dev/null; then
+  _gen_session_name() {
+    # Pronounceable: strict consonant-vowel alternation, 3-5 chars.
+    # CVC → "kov", CVCV → "kova", CVCVC → "kovat". Pure shell — no subprocess.
+    local C="bcdfghjklmnpqrstvwxz"   # 20 consonants
+    local V="aeiou"                   # 5 vowels
+    local len=$((3 + RANDOM % 3))    # 3, 4, or 5
+    local name="" i
+    for ((i=0; i<len; i++)); do
+      if (( i % 2 == 0 )); then
+        name+="${C:$((RANDOM % 20)):1}"
+      else
+        name+="${V:$((RANDOM % 5)):1}"
+      fi
+    done
+    echo "$name"
+  }
+  if ! tmux has-session -t main 2>/dev/null; then
+    exec tmux new-session -A -s main
+  elif tmux list-sessions -F '#{session_name} #{session_attached}' 2>/dev/null \
+       | grep -qE '^main 0$'; then
+    exec tmux attach-session -t main
+  else
+    # `main` is in use; spin up a uniquely-named fresh session
+    _name=$(_gen_session_name)
+    for _ in 1 2 3; do
+      tmux has-session -t "$_name" 2>/dev/null || break
+      _name=$(_gen_session_name)
+    done
+    exec tmux new-session -s "$_name"
+  fi
+fi
 
 # ─── Machine-local overrides ──────────────────────────────────────────────────
 [ -f "$HOME/.zshrc.local" ] && source "$HOME/.zshrc.local"

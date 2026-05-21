@@ -1,0 +1,49 @@
+#!/bin/bash
+
+GHOSTTY=/usr/bin/ghostty
+TMUX=/usr/bin/tmux
+WMCTRL=/usr/bin/wmctrl
+XDOTOOL=/usr/bin/xdotool
+CLAUDE=/home/lukas-shipley/.local/bin/claude
+BTOP=/usr/bin/btop
+
+sessions=(side-mon main-mon built-in)
+x_pos=(0 2160 6000)
+y_pos=(0 723 1683)
+w=(2160 3840 1920)
+h=(3840 2160 1200)
+post_cmds=("$CLAUDE" "$CLAUDE" "$BTOP")
+
+for i in "${!sessions[@]}"; do
+    s="${sessions[$i]}"
+    if ! $TMUX has-session -t "$s" 2>/dev/null; then
+        $TMUX new-session -d -s "$s"
+        $TMUX send-keys -t "$s" "${post_cmds[$i]}" Enter
+    fi
+done
+
+# Kill any prior cockpit ghostty (or stale kitty) instances before respawn.
+pkill -f 'ghostty.*--x11-instance-name=cockpit-' 2>/dev/null
+pkill -f 'kitty .*--instance-group cockpit' 2>/dev/null
+sleep 0.2
+
+# Each window is a separate ghostty process (--gtk-single-instance=false) with
+# a unique x11-instance-name so xdotool --classname can find + position each.
+for i in "${!sessions[@]}"; do
+    s="${sessions[$i]}"
+    $GHOSTTY --gtk-single-instance=false --x11-instance-name="cockpit-$s" \
+             -e $TMUX attach-session -t "$s" &
+    sleep 0.2
+done
+
+for i in "${!sessions[@]}"; do
+    s="${sessions[$i]}"
+    (
+        wid=$($XDOTOOL search --sync --classname "cockpit-$s" 2>/dev/null | tail -1)
+        $WMCTRL -ir "$wid" -b remove,maximized_vert,maximized_horz
+        $WMCTRL -ir "$wid" -e "0,${x_pos[$i]},${y_pos[$i]},${w[$i]},${h[$i]}"
+        $WMCTRL -ir "$wid" -b add,maximized_vert,maximized_horz
+    ) &
+done
+
+wait
