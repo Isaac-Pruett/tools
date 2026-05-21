@@ -23,6 +23,22 @@ gsettings set org.gnome.desktop.wm.keybindings switch-windows-backward "['<Shift
 gsettings set org.gnome.desktop.wm.keybindings cycle-windows           "['<Alt>Tab']"
 gsettings set org.gnome.desktop.wm.keybindings cycle-windows-backward  "['<Shift><Alt>Tab']"
 
+# ─── Power: NEVER auto-suspend ────────────────────────────────────────────────
+# User wants suspend triggered ONLY by them — closing the lid or stepping away
+# should leave processes running. Lock the screen manually with Super+L (or F12).
+# Suspend manually with Super+Shift+L. Screen still blanks + locks after 5min
+# idle (unchanged) for security, but blanking is purely visual and does NOT
+# pause processes.
+gsettings set org.gnome.settings-daemon.plugins.power lid-close-ac-action      'nothing'
+gsettings set org.gnome.settings-daemon.plugins.power lid-close-battery-action 'nothing'
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type      'nothing'
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'
+
+# Lock screen: Super+L (default) + F12 (second binding for one-hand convenience).
+# Suspend: Super+Shift+L — manual-only, paired with Super+L by mnemonic.
+gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver "['<Super>l', 'F12']"
+gsettings set org.gnome.settings-daemon.plugins.media-keys suspend     "['<Super><Shift>l']"
+
 # ─── Custom keybindings — explicit slot model ─────────────────────────────────
 KB_BASE='/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings'
 SCHEMA='org.gnome.settings-daemon.plugins.media-keys.custom-keybinding'
