@@ -55,3 +55,20 @@ case "$PLATFORM" in
     echo "  /opt/homebrew/bin/zsh  or  /usr/local/bin/zsh"
     ;;
 esac
+
+# ─── Per-machine profile dispatch ─────────────────────────────────────────────
+# If profiles/.active-profile points to a profile dir with a setup.sh, run it.
+# To activate a profile on a machine:
+#   ln -sfn <profile-name> profiles/.active-profile
+# Idempotent — safe to skip if no profile is active.
+ACTIVE="$REPO/profiles/.active-profile"
+if [[ -L "$ACTIVE" ]]; then
+  PROFILE_PATH="$(readlink -f "$ACTIVE")"
+  if [[ -f "$PROFILE_PATH/setup.sh" ]]; then
+    echo ""
+    echo "active profile: $(basename "$PROFILE_PATH")"
+    bash "$PROFILE_PATH/setup.sh"
+  else
+    echo "note: profiles/.active-profile points to $PROFILE_PATH but no setup.sh there — skipping"
+  fi
+fi

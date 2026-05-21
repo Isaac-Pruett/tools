@@ -26,6 +26,8 @@
         atuin    = pkgs.atuin;
         helix    = pkgs.helix;
         neovim   = pkgs.neovim;
+        nodejs   = pkgs.nodejs_22;
+        clang-tools = pkgs.clang-tools;
         lazygit  = pkgs.lazygit;
         delta    = pkgs.delta;
         socat    = pkgs.socat;

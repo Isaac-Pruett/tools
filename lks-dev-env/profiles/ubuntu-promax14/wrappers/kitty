@@ -1,0 +1,5 @@
+#!/bin/sh
+# Wrapper: nixGL provides OpenGL libs to the nix-installed kitty on Ubuntu.
+# Absolute paths used so GNOME custom-keybinding spawns work (their PATH
+# does NOT include ~/.nix-profile/bin reliably).
+exec /home/lukas-shipley/.nix-profile/bin/nixGLIntel /home/lukas-shipley/.nix-profile/bin/kitty "$@"

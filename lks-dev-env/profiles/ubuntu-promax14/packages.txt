@@ -1,0 +1,18 @@
+# apt packages for ubuntu-promax14
+# Lines starting with # are ignored. One package name per line.
+# This file is consumed by setup.sh — it runs `apt-get install -y` for any package
+# in this list that isn't already installed.
+#
+# Most dev tooling comes through Nix (~/.nix-profile/bin); only put apt-native
+# things here that don't have a good Nix path or that the OS itself wants.
+
+# X11 / accessibility infrastructure required for warpd's hint mode
+at-spi2-core
+libatspi2.0-0
+
+# Useful CLI utilities that ship cleanly via apt
+xdotool
+wmctrl
+
+# Graphics diagnostics — glxinfo, glxgears, glxheads. Live in mesa-utils.
+mesa-utils
