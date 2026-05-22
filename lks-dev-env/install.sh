@@ -35,12 +35,10 @@ ln -sf "$REPO/tmux/tmux.conf"         "$HOME/.tmux.conf"
 ln -sf "$REPO/tmux/keybinds.md"       "$HOME/.tmux/keybinds.md"
 ln -sf "$REPO/starship/starship.toml" "$HOME/.config/starship.toml"
 ln -sf "$REPO/scripts/sessionizer"    "$HOME/.local/bin/sessionizer"
-ln -sf "$REPO/scripts/clip-copy"      "$HOME/.local/bin/clip-copy"
-ln -sf "$REPO/scripts/clip-paste"     "$HOME/.local/bin/clip-paste"
 ln -sfn "$REPO/lazyvim"               "$HOME/.config/nvim"
 mkdir -p "$HOME/.config/ghostty"
 ln -sf "$REPO/ghostty/config"         "$HOME/.config/ghostty/config"
-chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/clip-copy" "$HOME/.local/bin/clip-paste"
+chmod +x "$HOME/.local/bin/sessionizer"
 
 # ─── Platform notes ────────────────────────────────────────────────────────────
 echo ""
@@ -49,10 +47,10 @@ echo ""
 
 case "$PLATFORM" in
   wsl)
-    echo "note: tmux clipboard — WSL may need clip.exe. Edit scripts/clip-copy if wl-copy/xsel aren't available."
+    echo "note: tmux clipboard uses OSC 52 → set-clipboard on. WSL needs a terminal that honors OSC 52 (Windows Terminal, wezterm, ghostty)."
     ;;
   mac)
-    echo "note: tmux clipboard — macOS needs pbcopy/pbpaste. Edit scripts/clip-copy to add a Darwin branch."
+    echo "note: tmux clipboard uses OSC 52 → set-clipboard on. macOS Terminal.app does NOT honor OSC 52 by default; use ghostty/iterm2/wezterm."
     echo "note: kitty shell path uses ~/.nix-profile/bin/zsh — update if using homebrew zsh:"
     echo "  /opt/homebrew/bin/zsh  or  /usr/local/bin/zsh"
     ;;
