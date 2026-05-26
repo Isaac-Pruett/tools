@@ -13,11 +13,15 @@ y_pos=(0 723 1683)
 w=(2160 3840 1920)
 h=(3840 2160 1200)
 post_cmds=("$CLAUDE" "$CLAUDE" "$BTOP")
+win0_names=(claude claude btop)
 
+# Each session starts with one named window running a default command.
+# Add more windows inside any session at runtime with prefix+c (Alt+E then c)
+# and rename with prefix+, — the index:name pair shows up in the status bar.
 for i in "${!sessions[@]}"; do
     s="${sessions[$i]}"
     if ! $TMUX has-session -t "$s" 2>/dev/null; then
-        $TMUX new-session -d -s "$s"
+        $TMUX new-session -d -s "$s" -n "${win0_names[$i]}"
         $TMUX send-keys -t "$s" "${post_cmds[$i]}" Enter
     fi
 done

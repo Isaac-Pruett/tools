@@ -11,28 +11,34 @@
 
  PANES                                          prefix then:
 ──────────────────────────────────────────────────────────────
-  "            split down
-  %            split right
+  "            split horizontal (top/bottom)
+  %            split vertical  (left/right)
   z            zoom toggle (fullscreen pane)
   x            kill pane
   o            next pane
-  q            show pane numbers
+  q            show pane numbers (then number = jump)
+  arrows       move between panes (or {/} swap with prev/next)
+  !            break pane out into its own window
+  M-1..5       preset layouts (even-h, even-v, main-h, main-v, tiled)
 
  WINDOWS
 ──────────────────────────────────────────────────────────────
   c            new window
-  n            next window
-  p            prev window
-  &            kill window
-  ,            rename window
+  n / p        next / prev window
+  l            toggle last window (alt-tab style)
   0-9          switch to window by number
+  ,            rename window (name shows in status bar)
+  &            kill window
+  .            move window to a different index
+  w            window picker (tree across sessions)
 
  SESSIONS
 ──────────────────────────────────────────────────────────────
-  d            detach
+  d            detach (keeps everything running)
   $            rename session
   s            session picker
   (  )         prev / next session
+  C-f (no pfx) sessionizer popup
 
  COPY MODE                              enter with M-h or [ 
 ──────────────────────────────────────────────────────────────

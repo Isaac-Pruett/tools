@@ -132,5 +132,18 @@ if [[ -o interactive ]] \
   fi
 fi
 
+# ─── tmux-share — open a second client on an existing session ────────────────
+# `tmux-share main` opens a fresh ghostty attached to a *grouped* session that
+# shares all windows with `main` but tracks its own active window — so two
+# monitors can sit on different windows of the same workspace.
+tmux-share() {
+  local s=${1:?usage: tmux-share <session>}
+  if ! tmux has-session -t "$s" 2>/dev/null; then
+    echo "no session named $s" >&2
+    return 1
+  fi
+  NO_TMUX_AUTO=1 ghostty -e tmux new-session -t "$s" -s "${s}-$$" &!
+}
+
 # ─── Machine-local overrides ──────────────────────────────────────────────────
 [ -f "$HOME/.zshrc.local" ] && source "$HOME/.zshrc.local"
