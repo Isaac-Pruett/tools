@@ -12,10 +12,14 @@
 # Sessions are created via session-picker so naming + branch + cwd are
 # consistent with what you'd get from picking interactively.
 
-set -e
+# Note: no `set -e`. Multiple steps tolerate non-fatal failures (pkill with no
+# match returns 1, session creation per slot is best-effort, etc.). Use
+# explicit `|| true` where a failure is expected to be benign.
 
-GHOSTTY=/usr/bin/ghostty
-TMUX=/usr/bin/tmux
+GHOSTTY_BIN=/usr/bin/ghostty
+# Don't name this variable TMUX — that's tmux's own env var (socket address).
+# Assigning to TMUX here would clobber the env var for every subprocess.
+TMUX_BIN=/usr/bin/tmux
 WMCTRL=/usr/bin/wmctrl
 XDOTOOL=/usr/bin/xdotool
 
@@ -28,24 +32,33 @@ h=(3840 2160 1200)
 if [ $# -eq 3 ]; then
   s1="$1"; s2="$2"; s3="$3"
 else
-  # Read [cockpit] from sessions.toml + ~/.cache/sessions-mru
+  # Read [cockpit] from sessions.toml + ~/.cache/sessions-mru.
+  # Filter MRU to ONLY toml-defined project/tool/branch/bare names so ad-hoc
+  # pronounceable sessions (qovu, hexel, …) can never hijack monitor 2.
   read s1 s2 s3 < <(python3 - <<'PY'
 import os, sys, tomllib
 from pathlib import Path
 cfg = Path.home() / ".config" / "sessions.toml"
 mru = Path.home() / ".cache" / "sessions-mru"
-data = {}
+full = {}
 if cfg.exists():
-    with open(cfg, "rb") as f: data = tomllib.load(f).get("cockpit", {})
-m1 = data.get("monitor_1", "")
-m3 = data.get("monitor_3", "")
-m2_default = data.get("monitor_2_default", "")
+    with open(cfg, "rb") as f:
+        full = tomllib.load(f)
+ck = full.get("cockpit", {})
+m1 = ck.get("monitor_1", "")
+m3 = ck.get("monitor_3", "")
+m2_default = ck.get("monitor_2_default", "")
+allowed = set()
+for kind in ("tool", "project", "branch", "bare"):
+    for item in full.get(kind, []):
+        name = item.get("name")
+        if name: allowed.add(name)
 pinned = {m1, m3}
 m2 = m2_default
 if mru.exists():
     for line in mru.read_text().splitlines():
         name = line.strip()
-        if name and name not in pinned:
+        if name and name not in pinned and name in allowed:
             m2 = name; break
 print(m1, m2, m3)
 PY
@@ -58,7 +71,7 @@ sessions=("$s1" "$s2" "$s3")
 # --ensure tells session-picker to create + return rather than attach.
 for s in "${sessions[@]}"; do
   if [ -z "$s" ]; then continue; fi
-  if ! $TMUX has-session -t "=$s" 2>/dev/null; then
+  if ! $TMUX_BIN has-session -t "=$s" 2>/dev/null; then
     if ! session-picker --ensure "$s"; then
       echo "cockpit: failed to create session '$s' — check ~/.config/sessions.toml" >&2
     fi
@@ -66,15 +79,15 @@ for s in "${sessions[@]}"; do
 done
 
 # ─── Kill prior cockpit ghostty instances before respawn ──────────────────────
-pkill -f 'ghostty.*--x11-instance-name=cockpit-' 2>/dev/null
+pkill -f 'ghostty.*--x11-instance-name=cockpit-' 2>/dev/null || true
 sleep 0.2
 
 # ─── Spawn one ghostty per monitor, each attached to its session ──────────────
 for i in "${!sessions[@]}"; do
   s="${sessions[$i]}"
   if [ -z "$s" ]; then continue; fi
-  $GHOSTTY --gtk-single-instance=false --x11-instance-name="cockpit-mon$((i+1))" \
-           -e $TMUX attach-session -t "$s" &
+  $GHOSTTY_BIN --gtk-single-instance=false --x11-instance-name="cockpit-mon$((i+1))" \
+           -e $TMUX_BIN attach-session -t "$s" &
   sleep 0.2
 done
 
