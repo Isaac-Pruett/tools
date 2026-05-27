@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""Project-aware tmux session picker.
+
+Reads ~/.config/sessions.toml, lists existing detached/attached tmux sessions
+and toml-defined projects, presents an fzf picker, and attaches/creates the
+selected session. Updates ~/.cache/sessions-mru for cockpit MRU lookup.
+
+Usage:
+  session-picker            interactive fzf picker
+  session-picker --auto     same, but used as the shell's auto-launcher (exec)
+  session-picker --query Q  prefill fzf query
+  session-picker NAME       direct attach/create by name (bypass picker)
+"""
+import os
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+CONFIG_PATH = Path.home() / ".config" / "sessions.toml"
+MRU_PATH = Path.home() / ".cache" / "sessions-mru"
+MRU_MAX = 20
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Config + tmux state
+
+def load_config():
+    if not CONFIG_PATH.exists():
+        return {}
+    with open(CONFIG_PATH, "rb") as f:
+        return tomllib.load(f)
+
+def expand(p):
+    return os.path.expanduser(p) if p else p
+
+def tmux_sessions():
+    """List existing tmux sessions with attached/windows/last-activity."""
+    try:
+        out = subprocess.run(
+            ["tmux", "list-sessions", "-F",
+             "#{session_name}\t#{session_attached}\t#{session_windows}\t#{session_activity}"],
+            capture_output=True, text=True, check=False,
+        )
+    except FileNotFoundError:
+        return []
+    if out.returncode != 0:
+        return []
+    rows = []
+    for line in out.stdout.strip().split("\n"):
+        if not line: continue
+        name, attached, windows, activity = line.split("\t")
+        rows.append({
+            "name": name,
+            "attached": attached != "0",
+            "windows": int(windows),
+            "activity": int(activity),
+        })
+    return rows
+
+def rel_age(epoch_seconds):
+    import time
+    s = int(time.time()) - epoch_seconds
+    if s < 60: return f"{s}s ago"
+    if s < 3600: return f"{s//60}m ago"
+    if s < 86400: return f"{s//3600}h ago"
+    return f"{s//86400}d ago"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Entry construction
+
+def build_entries(config, live):
+    """Build picker entries: detached/attached + toml-defined + ad-hoc/skip.
+
+    Each entry is a dict with: kind, name, label, help, action_fn.
+    """
+    live_by_name = {s["name"]: s for s in live}
+    seen = set()
+    entries = []
+
+    # 1) Existing sessions (detached first, then attached)
+    for sess in sorted(live, key=lambda s: (s["attached"], -s["activity"])):
+        tag = "[attached]" if sess["attached"] else "[detached]"
+        help_txt = f"{sess['windows']} window{'s' if sess['windows']!=1 else ''} · {rel_age(sess['activity'])}"
+        entries.append({
+            "kind": "live",
+            "name": sess["name"],
+            "label": f"{tag:11s} {sess['name']:22s} {help_txt}",
+            "action": ("attach", sess["name"], None),
+        })
+        seen.add(sess["name"])
+
+    # Build a name → path lookup of parent projects so branch entries can
+    # surface the right `git worktree add` hint when the dir is missing.
+    parent_paths = {p["name"]: expand(p["path"]) for p in config.get("project", [])}
+
+    # 2) Toml-defined entries (skip if a live session already shadows them)
+    for kind_key, tag, action_kind in [
+        ("tool",    "[tool]",     "create_path"),
+        ("project", "[project]",  "create_path"),
+        ("branch",  "[branch]",   "create_branch"),
+        ("bare",    "[bare]",     "create_path"),
+        ("utility", "[utility]",  "create_command"),
+    ]:
+        for item in config.get(kind_key, []):
+            name = item["name"]
+            if name in seen:
+                continue
+            if action_kind == "create_branch":
+                worktree = expand(item.get("worktree"))
+                branch = item.get("branch", "?")
+                parent = item.get("parent", "?")
+                help_txt = f"{parent} @ {branch}"
+                entries.append({
+                    "kind": kind_key,
+                    "name": name,
+                    "label": f"{tag:11s} {name:22s} {help_txt}",
+                    "action": (action_kind, name, {
+                        "worktree": worktree,
+                        "branch": branch,
+                        "parent_path": parent_paths.get(parent),
+                    }),
+                })
+            elif action_kind == "create_command":
+                cmd = item.get("command", "")
+                entries.append({
+                    "kind": kind_key,
+                    "name": name,
+                    "label": f"{tag:11s} {name:22s} {cmd}",
+                    "action": (action_kind, name, {"command": cmd}),
+                })
+            else:  # create_path
+                path = expand(item["path"])
+                help_txt = path
+                default_branch = item.get("default_branch")
+                if default_branch:
+                    help_txt += f"  (default {default_branch})"
+                entries.append({
+                    "kind": kind_key,
+                    "name": name,
+                    "label": f"{tag:11s} {name:22s} {help_txt}",
+                    "action": (action_kind, name, {"path": path, "default_branch": default_branch}),
+                })
+
+    # 3) Ad-hoc + skip (always last)
+    entries.append({
+        "kind": "adhoc",
+        "name": "_adhoc",
+        "label": f"{'[ad-hoc]':11s} {'pronounceable':22s} new session with random name",
+        "action": ("adhoc", None, None),
+    })
+    entries.append({
+        "kind": "skip",
+        "name": "_skip",
+        "label": f"{'[skip]':11s} {'bare shell':22s} no tmux",
+        "action": ("skip", None, None),
+    })
+
+    return entries
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Action dispatch
+
+def gen_pronounceable():
+    """3-5 letter consonant-vowel alternating, e.g. qovu / kobu / heset."""
+    import random
+    c = "bcdfghjklmnpqrstvwxz"
+    v = "aeiou"
+    length = random.randint(3, 5)
+    return "".join((c if i % 2 == 0 else v)[random.randrange(len(c if i % 2 == 0 else v))] for i in range(length))
+
+def update_mru(name, kind):
+    """Push session name to top of MRU file. Skip live (already known) + utility + ad-hoc/skip."""
+    if kind in ("utility", "adhoc", "skip"):
+        return
+    MRU_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing = [l.strip() for l in MRU_PATH.read_text().splitlines() if l.strip()]
+    except FileNotFoundError:
+        existing = []
+    existing = [n for n in existing if n != name]
+    existing.insert(0, name)
+    MRU_PATH.write_text("\n".join(existing[:MRU_MAX]) + "\n")
+
+def attach_or_switch(name):
+    """Attach (outside tmux) or switch-client (inside)."""
+    if os.environ.get("TMUX"):
+        os.execvp("tmux", ["tmux", "switch-client", "-t", f"={name}"])
+    else:
+        os.execvp("tmux", ["tmux", "attach-session", "-t", f"={name}"])
+
+def ensure_session(name, cwd=None, command=None):
+    """Create the session detached if it doesn't exist."""
+    if subprocess.run(["tmux", "has-session", "-t", f"={name}"], capture_output=True).returncode == 0:
+        return
+    args = ["tmux", "new-session", "-d", "-s", name]
+    if cwd:
+        args += ["-c", cwd]
+    if command:
+        args.append(command)
+    subprocess.run(args, check=True)
+
+def dispatch(entry, kind, ensure_only=False):
+    """Execute the chosen entry's action.
+
+    If ensure_only=True: just create the session detached (no attach/exec).
+    Otherwise: exec-attach (replaces this process). MRU is updated only after
+    the action succeeds (so failures like missing worktrees don't pollute MRU).
+    """
+    action, name, data = entry["action"]
+    final_name = name or entry["name"]
+
+    if action == "skip":
+        sys.exit(0)
+
+    if action == "adhoc":
+        name = gen_pronounceable()
+        for _ in range(3):
+            if subprocess.run(["tmux", "has-session", "-t", f"={name}"], capture_output=True).returncode != 0:
+                break
+            name = gen_pronounceable()
+        ensure_session(name)
+        if ensure_only: return
+        attach_or_switch(name)
+
+    if action == "attach":
+        update_mru(final_name, kind)
+        if ensure_only: return
+        attach_or_switch(name)
+
+    if action == "create_path":
+        path = data["path"]
+        if not os.path.isdir(path):
+            sys.stderr.write(f"path not found: {path}\n")
+            sys.exit(2)
+        ensure_session(name, cwd=path)
+        update_mru(final_name, kind)
+        if ensure_only: return
+        attach_or_switch(name)
+
+    if action == "create_branch":
+        worktree = data["worktree"]
+        branch = data["branch"]
+        parent_path = data.get("parent_path")
+        if not os.path.isdir(worktree):
+            cmd_hint = (
+                f"  git -C {parent_path} worktree add {worktree} {branch}"
+                if parent_path else
+                f"  git worktree add {worktree} {branch}"
+            )
+            sys.stderr.write(
+                f"\nworktree not found: {worktree}\n"
+                f"create with:\n{cmd_hint}\n\n"
+            )
+            sys.exit(2)
+        ensure_session(name, cwd=worktree)
+        update_mru(final_name, kind)
+        if ensure_only: return
+        attach_or_switch(name)
+
+    if action == "create_command":
+        ensure_session(name, command=data["command"])
+        update_mru(final_name, kind)
+        if ensure_only: return
+        attach_or_switch(name)
+
+    sys.stderr.write(f"unknown action: {action}\n")
+    sys.exit(2)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# fzf interaction
+
+def run_fzf(entries, query=None):
+    """Show fzf picker. Returns the selected entry, or None for ESC.
+
+    Each line piped to fzf is: KEY<TAB>LABEL
+    KEY is "<kind>:<name>" so we can recover the entry after selection.
+    Only LABEL is displayed (via --with-nth=2).
+    """
+    lines = []
+    by_key = {}
+    for e in entries:
+        key = f"{e['kind']}:{e['name']}"
+        lines.append(f"{key}\t{e['label']}")
+        by_key[key] = e
+    payload = "\n".join(lines).encode()
+
+    args = [
+        "fzf",
+        "--delimiter=\t",
+        "--with-nth=2",
+        "--prompt", "  session › ",
+        "--height", "60%",
+        "--border", "rounded",
+        "--no-sort",
+        "--reverse",
+    ]
+    if query:
+        args += ["--query", query]
+
+    res = subprocess.run(args, input=payload, capture_output=True)
+    if res.returncode == 130 or not res.stdout.strip():  # ESC
+        return None
+    chosen_line = res.stdout.decode().strip()
+    key = chosen_line.split("\t", 1)[0]
+    return by_key.get(key)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Main
+
+def main():
+    args = sys.argv[1:]
+    auto = "--auto" in args
+    ensure_only = False
+    query = None
+    direct_name = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--query" and i + 1 < len(args):
+            query = args[i + 1]; i += 2; continue
+        if a == "--ensure" and i + 1 < len(args):
+            ensure_only = True; direct_name = args[i + 1]; i += 2; continue
+        if a in ("--auto",):
+            i += 1; continue
+        if not a.startswith("--"):
+            direct_name = a
+        i += 1
+
+    config = load_config()
+    live = tmux_sessions()
+    entries = build_entries(config, live)
+
+    if direct_name:
+        match = next((e for e in entries if e["name"] == direct_name and e["kind"] != "skip"), None)
+        if match:
+            return dispatch(match, match["kind"], ensure_only=ensure_only)
+        if ensure_only:
+            sys.stderr.write(f"no session named '{direct_name}' in config or live tmux\n")
+            sys.exit(2)
+        query = direct_name
+
+    chosen = run_fzf(entries, query=query)
+    if chosen is None:
+        adhoc = next(e for e in entries if e["kind"] == "adhoc")
+        return dispatch(adhoc, "adhoc")
+    return dispatch(chosen, chosen["kind"])
+
+if __name__ == "__main__":
+    main()

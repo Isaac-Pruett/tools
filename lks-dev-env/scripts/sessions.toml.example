@@ -1,0 +1,53 @@
+# Template for ~/.config/sessions.toml
+# Copy to ~/.config/sessions.toml and edit. install.sh copies this automatically
+# if no ~/.config/sessions.toml is present.
+#
+# Schema:
+#   [[tool]]      personal/utility repos
+#   [[project]]   standalone projects
+#   [[branch]]    per-branch worktrees of a parent project
+#   [[bare]]      a directory with no repo
+#   [[utility]]   a command (like btop / htop) that runs in the session
+#   [cockpit]     default monitor → session assignments
+#
+# Every name field becomes a tmux session name. Names must be unique across all
+# tables. Path fields support ~ for $HOME.
+
+# ─── Tools ────────────────────────────────────────────────────────────────────
+[[tool]]
+name = "my-tool-repo"
+path = "~/code/my-tool-repo"
+default_branch = "main"
+
+# ─── Projects ─────────────────────────────────────────────────────────────────
+[[project]]
+name = "example-project"
+path = "~/code/example-project"
+default_branch = "main"
+
+# ─── Branch subprojects ───────────────────────────────────────────────────────
+# When you pick this session, picker cd's to the worktree dir. If the dir
+# doesn't exist, picker prints the `git worktree add` command needed and exits.
+[[branch]]
+name = "feature-x"
+worktree = "~/code/example-project-worktrees/feature-x"
+branch = "feature/x"
+parent = "example-project"
+
+# ─── Bare directories ─────────────────────────────────────────────────────────
+[[bare]]
+name = "scratch"
+path = "~/scratch"
+
+# ─── Utilities ────────────────────────────────────────────────────────────────
+[[utility]]
+name = "btop"
+command = "btop"
+
+# ─── Cockpit ──────────────────────────────────────────────────────────────────
+# monitor_1, monitor_3 are pinned. monitor_2 uses MRU; monitor_2_default is the
+# fallback used when ~/.cache/sessions-mru is empty (e.g. first run / after reboot).
+[cockpit]
+monitor_1 = "example-project"
+monitor_2_default = "feature-x"
+monitor_3 = "btop"

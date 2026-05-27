@@ -87,50 +87,34 @@ add-zsh-hook precmd _cursor_block_blink
 # ─── Starship prompt ──────────────────────────────────────────────────────────
 command -v starship &>/dev/null && eval "$(starship init zsh)"
 
-# ─── Auto-launch tmux for interactive shells outside tmux ────────────────────
-# Each new ghostty/kitty/tty gets its OWN tmux session so they don't fight over
-# resize. Behavior:
-#   • If `main` doesn't exist yet → create + attach to `main` (your "primary")
-#   • If `main` exists and is unattached → attach to it (resume on Ctrl+Alt+T)
-#   • If `main` exists AND is already attached elsewhere → create a fresh
-#     session with a random 3-5-letter name (e.g. `qfx`, `vehfx`, `kobu`)
-# Names come from /dev/urandom; cost is < 100µs per launch, negligible.
-# Toggle off by setting NO_TMUX_AUTO=1.
+# ─── Auto-launch tmux via session-picker ─────────────────────────────────────
+# session-picker reads ~/.config/sessions.toml + live tmux state, shows fzf,
+# attaches/creates the chosen session. ESC = ad-hoc pronounceable session.
+# Skip via the picker's [skip] entry, or set NO_TMUX_AUTO=1 to bypass entirely.
+# See ~/tools/lks-dev-env/docs/sessions.md for the design.
 if [[ -o interactive ]] \
   && [[ -z "$TMUX" ]] \
   && [[ -z "$NO_TMUX_AUTO" ]] \
-  && command -v tmux &>/dev/null; then
-  _gen_session_name() {
-    # Pronounceable: strict consonant-vowel alternation, 3-5 chars.
-    # CVC → "kov", CVCV → "kova", CVCVC → "kovat". Pure shell — no subprocess.
-    local C="bcdfghjklmnpqrstvwxz"   # 20 consonants
-    local V="aeiou"                   # 5 vowels
-    local len=$((3 + RANDOM % 3))    # 3, 4, or 5
-    local name="" i
-    for ((i=0; i<len; i++)); do
-      if (( i % 2 == 0 )); then
-        name+="${C:$((RANDOM % 20)):1}"
-      else
-        name+="${V:$((RANDOM % 5)):1}"
-      fi
-    done
-    echo "$name"
-  }
-  if ! tmux has-session -t main 2>/dev/null; then
-    exec tmux new-session -A -s main
-  elif tmux list-sessions -F '#{session_name} #{session_attached}' 2>/dev/null \
-       | grep -qE '^main 0$'; then
-    exec tmux attach-session -t main
-  else
-    # `main` is in use; spin up a uniquely-named fresh session
-    _name=$(_gen_session_name)
-    for _ in 1 2 3; do
-      tmux has-session -t "$_name" 2>/dev/null || break
-      _name=$(_gen_session_name)
-    done
-    exec tmux new-session -s "$_name"
-  fi
+  && command -v tmux &>/dev/null \
+  && command -v session-picker &>/dev/null; then
+  exec session-picker --auto
 fi
+
+# ─── tx — direct attach by name, picker on no-arg ─────────────────────────────
+tx() {
+  local name=$1
+  if [ -z "$name" ]; then
+    session-picker
+  elif tmux has-session -t "=$name" 2>/dev/null; then
+    if [ -n "$TMUX" ]; then
+      tmux switch-client -t "=$name"
+    else
+      tmux attach-session -t "=$name"
+    fi
+  else
+    session-picker --query "$name"
+  fi
+}
 
 # ─── tmux-share — open a second client on an existing session ────────────────
 # `tmux-share main` opens a fresh ghostty attached to a *grouped* session that
