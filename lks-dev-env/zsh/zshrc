@@ -116,6 +116,30 @@ tx() {
   fi
 }
 
+# ─── lks-rebase — rebase the current worktree's branch onto origin/main ──────
+# Usage:
+#   lks-rebase                     # uses $PWD
+#   lks-rebase ~/dev/myrepo        # explicit path
+# Refuses to rebase a detached HEAD. On conflicts, leaves the rebase in progress
+# so you can resolve and `git rebase --continue` (or `--abort`).
+lks-rebase() {
+  local wt=${1:-$PWD}
+  if ! git -C "$wt" rev-parse --git-dir &>/dev/null; then
+    echo "lks-rebase: not a git repo: $wt" >&2
+    return 1
+  fi
+  local branch
+  branch=$(git -C "$wt" branch --show-current)
+  if [ -z "$branch" ]; then
+    echo "lks-rebase: detached HEAD in $wt — refusing" >&2
+    return 1
+  fi
+  echo "→ fetching origin in $wt"
+  git -C "$wt" fetch --prune origin || return 1
+  echo "→ rebasing '$branch' onto origin/main"
+  git -C "$wt" rebase origin/main
+}
+
 # ─── tmux-share — open a second client on an existing session ────────────────
 # `tmux-share main` opens a fresh ghostty attached to a *grouped* session that
 # shares all windows with `main` but tracks its own active window — so two
