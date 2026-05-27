@@ -36,10 +36,11 @@ ln -sf "$REPO/tmux/keybinds.md"       "$HOME/.tmux/keybinds.md"
 ln -sf "$REPO/starship/starship.toml" "$HOME/.config/starship.toml"
 ln -sf "$REPO/scripts/sessionizer"     "$HOME/.local/bin/sessionizer"
 ln -sf "$REPO/scripts/session-picker"  "$HOME/.local/bin/session-picker"
+ln -sf "$REPO/scripts/gst"             "$HOME/.local/bin/gst"
 ln -sfn "$REPO/lazyvim"                "$HOME/.config/nvim"
 mkdir -p "$HOME/.config/ghostty"
 ln -sf "$REPO/ghostty/config"          "$HOME/.config/ghostty/config"
-chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/session-picker"
+chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/session-picker" "$HOME/.local/bin/gst"
 
 # ─── Seed ~/.config/sessions.toml if missing ──────────────────────────────────
 if [ ! -f "$HOME/.config/sessions.toml" ]; then
