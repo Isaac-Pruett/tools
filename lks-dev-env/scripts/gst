@@ -1,32 +1,55 @@
 #!/usr/bin/env bash
-# gst — git status -s across every tool / project / branch worktree / bare dir
-# listed in ~/.config/sessions.toml. Prints only dirs with something to show;
-# clean dirs are silent. Output groups: "<path> [<branch>]" header, then the
-# `git status -s` lines indented by two spaces.
+# gst — git status -s across every tool / project / branch worktree / bare
+# entry in ~/.config/sessions.toml. Clean entries are silent.
+#
+# Output groups: "<name> [<branch>]" header (name comes from the toml so it
+# matches `tx` and the picker), then `git status -s` indented by two spaces.
+# A "(path: ~/...)" line follows when the toml name doesn't make the location
+# obvious. Utility entries are skipped (no path).
 
-paths=$(python3 - <<'PY'
-import tomllib, os
+python3 - <<'PY'
+import os, subprocess, sys, tomllib
 from pathlib import Path
-cfg_path = Path.home() / ".config" / "sessions.toml"
-if not cfg_path.exists():
-    raise SystemExit(0)
-with open(cfg_path, "rb") as f:
+
+CFG = Path.home() / ".config" / "sessions.toml"
+HOME = str(Path.home())
+
+if not CFG.exists():
+    sys.exit(0)
+with open(CFG, "rb") as f:
     cfg = tomllib.load(f)
-seen = set()
+
+# Iterate toml entries in their listed order; each entry contributes a (name, path) pair.
+entries = []
 for kind, key in [("tool","path"), ("project","path"), ("branch","worktree"), ("bare","path")]:
     for item in cfg.get(kind, []):
-        p = os.path.expanduser(item.get(key, ""))
-        if p and p not in seen and os.path.isdir(p):
-            seen.add(p); print(p)
-PY
-)
+        name = item.get("name")
+        raw = item.get(key, "")
+        if not name or not raw: continue
+        path = os.path.expanduser(raw)
+        if not os.path.isdir(path): continue
+        entries.append((name, path))
 
-for path in $paths; do
-  [ -e "$path/.git" ] || continue
-  output=$(git -C "$path" status -s 2>/dev/null)
-  if [ -n "$output" ]; then
-    branch=$(git -C "$path" branch --show-current 2>/dev/null)
-    printf '%s [%s]\n' "${path/#$HOME/~}" "${branch:-?}"
-    printf '%s\n\n' "$output" | sed 's/^/  /'
-  fi
-done
+seen_paths = set()
+for name, path in entries:
+    if path in seen_paths: continue
+    seen_paths.add(path)
+    if not (os.path.exists(os.path.join(path, ".git"))):
+        continue
+    res = subprocess.run(
+        ["git", "-C", path, "status", "-s"],
+        capture_output=True, text=True
+    )
+    out = res.stdout.strip()
+    if not out:
+        continue
+    branch = subprocess.run(
+        ["git", "-C", path, "branch", "--show-current"],
+        capture_output=True, text=True
+    ).stdout.strip() or "?"
+    short_path = path.replace(HOME, "~", 1)
+    print(f"{name} [{branch}]  ({short_path})")
+    for line in out.splitlines():
+        print(f"  {line}")
+    print()
+PY
