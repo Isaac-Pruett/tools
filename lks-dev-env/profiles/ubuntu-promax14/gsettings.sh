@@ -83,6 +83,19 @@ gsettings set "$SCHEMA:$KB_BASE/custom7/" name    'Move window to monitor 3'
 gsettings set "$SCHEMA:$KB_BASE/custom7/" command "$HOME/.local/bin/move-to-monitor 3"
 gsettings set "$SCHEMA:$KB_BASE/custom7/" binding '<Super><Alt>3'
 
+# focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S
+# Each runs focus-app, which calls `wmctrl -xa <class>` to raise the existing
+# window; if no window exists, it launches the app fresh.
+gsettings set "$SCHEMA:$KB_BASE/focus-zen/" name    'Focus Zen browser'
+gsettings set "$SCHEMA:$KB_BASE/focus-zen/" command "$HOME/.local/bin/focus-app zen"
+gsettings set "$SCHEMA:$KB_BASE/focus-zen/" binding '<Super>z'
+gsettings set "$SCHEMA:$KB_BASE/focus-obsidian/" name    'Focus Obsidian'
+gsettings set "$SCHEMA:$KB_BASE/focus-obsidian/" command "$HOME/.local/bin/focus-app obsidian"
+gsettings set "$SCHEMA:$KB_BASE/focus-obsidian/" binding '<Super>o'
+gsettings set "$SCHEMA:$KB_BASE/focus-slack/" name    'Focus Slack'
+gsettings set "$SCHEMA:$KB_BASE/focus-slack/" command "$HOME/.local/bin/focus-app slack"
+gsettings set "$SCHEMA:$KB_BASE/focus-slack/" binding '<Super>s'
+
 # ─── Clean up stale orphan slots ──────────────────────────────────────────────
 # custom4 used to hold the kitty Ctrl+Alt+T binding before we moved to ghostty
 # at custom0. It's dormant but lingering in dconf — remove so future audits
@@ -93,6 +106,6 @@ dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 # Build the array from the explicit list above. ANY future custom binding must
 # be added to BOTH a new slot block AND this array literal.
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/']"
+  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/']"
 
 echo "→ gsettings: done"

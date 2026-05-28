@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# focus-app <name> — focus an app's existing window, or launch it if not running.
+# Bound to Super+Z / Super+O / Super+S via the profile's gsettings.sh.
+
+set -e
+
+case "${1:-}" in
+  zen)
+    wmctrl -xa zen 2>/dev/null \
+      || setsid env MOZ_ENABLE_WAYLAND=0 GDK_BACKEND=x11 /opt/zen/zen </dev/null >/dev/null 2>&1 &
+    ;;
+  obsidian)
+    wmctrl -xa obsidian 2>/dev/null \
+      || setsid "$HOME/.local/bin/obsidian" </dev/null >/dev/null 2>&1 &
+    ;;
+  slack)
+    wmctrl -xa Slack 2>/dev/null \
+      || setsid /snap/bin/slack </dev/null >/dev/null 2>&1 &
+    ;;
+  *)
+    echo "usage: focus-app <zen|obsidian|slack>" >&2
+    exit 1
+    ;;
+esac
