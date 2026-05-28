@@ -86,6 +86,13 @@ gsettings set "$SCHEMA:$KB_BASE/custom7/" binding '<Super><Alt>3'
 # focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S
 # Each runs focus-app, which calls `wmctrl -xa <class>` to raise the existing
 # window; if no window exists, it launches the app fresh.
+#
+# Super+O and Super+S collide with GNOME built-ins (rotate-video-lock-static
+# and toggle-quick-settings) which win over custom bindings. We clear them
+# below so the custom bindings fire. Super+Z is free.
+gsettings set org.gnome.settings-daemon.plugins.media-keys rotate-video-lock-static "['XF86RotationLockToggle']"
+gsettings set org.gnome.shell.keybindings toggle-quick-settings "[]"
+
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" name    'Focus Zen browser'
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" command "$HOME/.local/bin/focus-app zen"
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" binding '<Super>z'
