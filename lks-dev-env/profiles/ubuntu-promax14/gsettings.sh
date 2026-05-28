@@ -67,7 +67,7 @@ gsettings set "$SCHEMA:$KB_BASE/custom2/" binding '<Shift><Control>Escape'
 # names in the array; named is clearer than re-using a numeric.
 gsettings set "$SCHEMA:$KB_BASE/cockpit/" name    'Cockpit launcher (3-monitor multi-window)'
 gsettings set "$SCHEMA:$KB_BASE/cockpit/" command "$HOME/.local/bin/cockpit"
-gsettings set "$SCHEMA:$KB_BASE/cockpit/" binding '<Super><Shift>Return'
+gsettings set "$SCHEMA:$KB_BASE/cockpit/" binding '<Super><Alt>Return'
 
 # custom5/6/7 — Super+Alt+1/2/3 → move focused window to monitor 1/2/3
 # Was Alt+1/2/3 originally — moved to Super+Alt because plain Alt+N collides
