@@ -115,4 +115,11 @@ dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
   "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/']"
 
+# Adding NEW custom-keybinding slots (not just editing existing ones) requires
+# gsd-media-keys to re-read its config. It caches the slot list at startup and
+# doesn't dynamically pick up new entries. Restart it so this script's changes
+# take effect immediately — otherwise the user has to log out + back in.
+echo "→ gsettings: restarting gsd-media-keys to pick up any new slots"
+killall gsd-media-keys 2>/dev/null && sleep 0.5 || true
+
 echo "→ gsettings: done"
