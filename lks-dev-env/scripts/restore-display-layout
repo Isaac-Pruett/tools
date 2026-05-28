@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# restore-display-layout — apply the canonical 3-monitor layout via xrandr,
+# matching outputs by EDID rather than connector name.
+#
+# Why this exists: GNOME's monitors.xml keys saved layouts on connector name.
+# The Samsung's DP cable sometimes enumerates as DP-1, sometimes as DP-1-1-1
+# (MST sub-stream) depending on link negotiation. GNOME treats each
+# enumeration as a different hardware config and either picks the wrong saved
+# layout or asks you to lay it out again. This script bypasses that by
+# matching on the panel's EDID name (vendor + model).
+#
+# Run on demand: `restore-display-layout`
+# Autostarted: ~/.config/autostart/restore-display-layout.desktop
+
+set -e
+
+# Wait briefly so all outputs are enumerated after login / hotplug.
+sleep 1
+
+# Find xrandr output name whose EDID contains the given regex pattern.
+# Uses `xrandr --verbose` which interleaves the connector name + EDID hex,
+# avoiding the DRM↔xrandr name divergence on MST connectors (DRM exposes
+# flat names like card1-DP-8; xrandr exposes hierarchical DP-1-1-1).
+find_output() {
+  local pattern=$1
+  python3 - "$pattern" <<'PY'
+import re, subprocess, sys
+pattern = re.compile(sys.argv[1])
+out = subprocess.check_output(['xrandr', '--verbose'], text=True)
+
+def decode_edid(hex_lines):
+    try:
+        b = bytes.fromhex(''.join(hex_lines))
+    except ValueError:
+        return ''
+    return ''.join(chr(c) for c in b if 32 <= c < 127)
+
+# Any top-level output line (connected OR disconnected) is a transition. We
+# flush the previous output's accumulated EDID first, then start fresh state
+# for the new output. Disconnected outputs simply have no EDID to collect.
+current_name, capturing, edid_hex = None, False, []
+output_re = re.compile(r'^(\S+) (?:connected|disconnected)\b')
+
+def flush():
+    if current_name and edid_hex:
+        text = decode_edid(edid_hex)
+        if pattern.search(text):
+            print(current_name); sys.exit(0)
+
+for line in out.splitlines():
+    m = output_re.match(line)
+    if m:
+        flush()
+        current_name = m.group(1) if 'connected' in line and 'disconnected' not in line else None
+        capturing = False; edid_hex = []
+        continue
+    if 'EDID:' in line:
+        capturing = True; continue
+    if capturing:
+        m2 = re.match(r'^\s+([0-9a-fA-F]+)\s*$', line)
+        if m2 and len(m2.group(1)) >= 16:
+            edid_hex.append(m2.group(1))
+        else:
+            capturing = False
+flush()
+PY
+}
+
+lg=$(find_output "LG ULTRAFINE|512INSE5G502")
+samsung=$(find_output "U32J59|HCRY400352")
+builtin=$(find_output "NV14N4F")  # BOE panel serial from EDID
+
+echo "detected outputs:"
+echo "  vertical (LG):  ${lg:-(missing)}"
+echo "  main (Samsung): ${samsung:-(missing)}"
+echo "  built-in:       ${builtin:-(missing)}"
+
+# Apply layout. Coords match the layout we want:
+#   LG vertical:  (0,0)        3840x2160 rotated left → renders as 2160x3840
+#   Samsung main: (2160, 683)  3840x2160 @ 60Hz
+#   Built-in:     (6000, 1643) 1920x1200 @ 60Hz, primary
+[ -n "$lg" ]      && xrandr --output "$lg"      --mode 3840x2160 --rate 60 --pos 0x0    --rotate left
+[ -n "$samsung" ] && xrandr --output "$samsung" --mode 3840x2160 --rate 60 --pos 2160x683
+[ -n "$builtin" ] && xrandr --output "$builtin" --mode 1920x1200 --rate 60 --pos 6000x1643 --primary
+
+echo "→ layout applied"

@@ -23,17 +23,35 @@ TMUX_BIN=/usr/bin/tmux
 WMCTRL=/usr/bin/wmctrl
 XDOTOOL=/usr/bin/xdotool
 
-# Monitor geometry — keep aligned with `xrandr --query | grep ' connected'`
-#   mon1 vertical (DP-2):     pos=(0,    0)    size=2160x3840
-#   mon2 main (DP-1):         pos=(2160, 0)    size=3840x2160
-#   mon3 built-in (eDP-1):    pos=(6000, 960)  size=1920x1200
-# If physical layout changes, run:
-#   xrandr --query | grep ' connected' | awk '{ for(i=1;i<=NF;i++) if($i~/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/) print $1,$i }'
-# and copy the +X+Y / WxH values here.
-x_pos=(0 2160 6000)
-y_pos=(0 0 960)
-w=(2160 3840 1920)
-h=(3840 2160 1200)
+# Monitor geometry — auto-detected from xrandr at runtime so layout shifts
+# (GNOME re-laying out after MST renumber, hub swap, etc.) don't require
+# editing this file. Classifies each connected output by orientation/size:
+#   * portrait (height > width) and large    → slot 0 (vertical side monitor)
+#   * landscape ≥3000px wide and ≥1500px tall → slot 1 (main)
+#   * everything else                         → slot 2 (built-in)
+# If more than one display matches a slot, the first one wins (xrandr order).
+x_pos=("" "" "")
+y_pos=("" "" "")
+w=("" "" "")
+h=("" "" "")
+while read -r geo; do
+  [[ "$geo" =~ ([0-9]+)x([0-9]+)\+([0-9]+)\+([0-9]+) ]] || continue
+  ww=${BASH_REMATCH[1]}; hh=${BASH_REMATCH[2]}
+  xx=${BASH_REMATCH[3]}; yy=${BASH_REMATCH[4]}
+  if   (( hh > ww && hh >= 3000 ));        then idx=0
+  elif (( ww >= 3000 && hh >= 1500 ));     then idx=1
+  else                                          idx=2
+  fi
+  # First-match-wins so a second portrait monitor doesn't clobber slot 0.
+  [ -z "${w[$idx]}" ] && { x_pos[$idx]=$xx; y_pos[$idx]=$yy; w[$idx]=$ww; h[$idx]=$hh; }
+done < <(xrandr --query | awk '/ connected/{ for(i=1;i<=NF;i++) if($i~/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/) print $i }')
+
+echo "→ cockpit: monitor slots (slot=pos size)"
+for i in 0 1 2; do
+  [ -n "${w[$i]}" ] \
+    && echo "    $i: (${x_pos[$i]},${y_pos[$i]}) ${w[$i]}x${h[$i]}" \
+    || echo "    $i: (unfilled)"
+done
 
 # ─── Resolve which sessions land on each monitor ──────────────────────────────
 if [ $# -eq 3 ]; then
