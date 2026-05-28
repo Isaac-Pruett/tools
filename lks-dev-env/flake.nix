@@ -35,6 +35,19 @@
         btop     = pkgs.btop;
         nethogs  = pkgs.nethogs;
 
+        # Networking diagnostics
+        nmap        = pkgs.nmap;        # port scanning + host discovery
+        wireshark   = pkgs.wireshark;   # GUI packet inspector (also provides tshark)
+        tcpdump     = pkgs.tcpdump;     # CLI packet capture
+        mtr         = pkgs.mtr;         # traceroute + ping combined
+        iperf3      = pkgs.iperf3;      # bandwidth testing
+
+        # Pen-testing / wireless
+        aircrack-ng = pkgs.aircrack-ng; # wifi suite — airodump-ng, airmon-ng, aireplay-ng
+        hydra       = pkgs.thc-hydra;   # auth brute-forcer
+        gobuster    = pkgs.gobuster;    # web/dir/dns enumeration
+        masscan     = pkgs.masscan;     # very fast port scanner
+
         sticky-fingers = pkgs.rustPlatform.buildRustPackage {
           pname   = "sticky-fingers";
           version = "0.1.0";
