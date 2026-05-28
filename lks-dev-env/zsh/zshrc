@@ -92,12 +92,16 @@ command -v starship &>/dev/null && eval "$(starship init zsh)"
 # attaches/creates the chosen session. ESC = ad-hoc pronounceable session.
 # Skip via the picker's [skip] entry, or set NO_TMUX_AUTO=1 to bypass entirely.
 # See ~/tools/lks-dev-env/docs/sessions.md for the design.
+#
+# NOT `exec`: if session-picker exits without launching tmux (skip / fzf cancel
+# / missing worktree / error), we want a normal zsh to come up instead of
+# closing the ghostty tab.
 if [[ -o interactive ]] \
   && [[ -z "$TMUX" ]] \
   && [[ -z "$NO_TMUX_AUTO" ]] \
   && command -v tmux &>/dev/null \
   && command -v session-picker &>/dev/null; then
-  exec session-picker --auto
+  session-picker --auto
 fi
 
 # ─── tx — direct attach by name, picker on no-arg ─────────────────────────────
