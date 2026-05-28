@@ -24,11 +24,14 @@ WMCTRL=/usr/bin/wmctrl
 XDOTOOL=/usr/bin/xdotool
 
 # Monitor geometry — keep aligned with `xrandr --query | grep ' connected'`
-#   mon1 vertical:    pos=(0,    0)     size=2160x3840
-#   mon2 main:        pos=(2160, 763)   size=3840x2160
-#   mon3 built-in:    pos=(6000, 1723)  size=1920x1200
+#   mon1 vertical (DP-2):     pos=(0,    0)    size=2160x3840
+#   mon2 main (HDMI-1):       pos=(2160, 0)    size=3840x2160
+#   mon3 built-in (eDP-1):    pos=(6000, 802)  size=1920x1200
+# If physical layout changes, run:
+#   xrandr --query | grep ' connected' | awk '{ for(i=1;i<=NF;i++) if($i~/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/) print $1,$i }'
+# and copy the +X+Y / WxH values here.
 x_pos=(0 2160 6000)
-y_pos=(0 763 1723)
+y_pos=(0 0 802)
 w=(2160 3840 1920)
 h=(3840 2160 1200)
 
