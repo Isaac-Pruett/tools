@@ -39,11 +39,19 @@ fi
 echo "→ sync-to-host: pushing lks-dev-env to $HOST" >&2
 echo "  local=$LOCAL_HASH  remote=${REMOTE_HASH:-(none)}" >&2
 
+# Pre-create $HOME/tools so first-time targets don't fail the rsync mkdir.
+# (Idempotent — mkdir -p is harmless if it already exists.)
+ssh "$HOST" 'mkdir -p ~/tools' >&2
+
+# .active-profile is EXCLUDED — each host picks its own profile (or none).
+# Without this exclusion, syncing from the laptop would activate the
+# ubuntu-promax14 profile on a headless server, which then tries apt-get etc.
 rsync -az --delete \
   --exclude='.git' \
   --exclude='result' \
   --exclude='sticky-fingers/target' \
   --exclude='lazyvim/.git' \
+  --exclude='profiles/.active-profile' \
   "$REPO/" "$HOST:tools/lks-dev-env/" >&2
 
 ssh "$HOST" "
