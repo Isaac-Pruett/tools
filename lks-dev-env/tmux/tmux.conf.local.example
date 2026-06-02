@@ -1,0 +1,21 @@
+# ~/.tmux.conf.local — machine-local tmux overrides (NOT tracked in lks-dev-env).
+#
+# Sourced from tmux.conf via:
+#   if-shell '[ -f ~/.tmux.conf.local ]' 'source-file ~/.tmux.conf.local'
+#
+# Use this file for:
+#   - SSH-into-remote-tmux bindings (host names are personal)
+#   - Any other machine-local bindings you don't want in the public dotfiles repo
+#
+# Each `bind <key> new-window -n <window-label> "tx-remote <host> [session]"`
+# opens a new local tmux window that runs tx-remote, which:
+#   1. Calls sync-to-host to rsync the dev-env if remote is stale
+#   2. ssh -t <host> "TERM=xterm-256color tmux new -A -s <session>"
+# Remote tmux gets Alt+W prefix automatically via the hostname conditional in
+# tmux.conf, so it never collides with the laptop's Alt+E.
+
+# Examples (uncomment + edit the hostnames + window labels for your setup):
+#
+# bind G new-window -n remote "tx-remote myhost"
+# bind H new-window -n alt    "tx-remote my-other-host"
+# bind J new-window -n third  "tx-remote yet-another-host main"

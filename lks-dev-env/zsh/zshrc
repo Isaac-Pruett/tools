@@ -87,22 +87,33 @@ add-zsh-hook precmd _cursor_block_blink
 # ─── Starship prompt ──────────────────────────────────────────────────────────
 command -v starship &>/dev/null && eval "$(starship init zsh)"
 
-# ─── Auto-launch tmux via session-picker ─────────────────────────────────────
-# session-picker reads ~/.config/sessions.toml + live tmux state, shows fzf,
-# attaches/creates the chosen session. ESC = ad-hoc pronounceable session.
-# Skip via the picker's [skip] entry, or set NO_TMUX_AUTO=1 to bypass entirely.
-# See ~/tools/lks-dev-env/docs/sessions.md for the design.
-#
-# NOT `exec`: if session-picker exits without launching tmux (skip / fzf cancel
-# / missing worktree / error), we want a normal zsh to come up instead of
-# closing the ghostty tab.
+# ─── Auto-attach default tmux session ────────────────────────────────────────
+# New terminal windows land in a tmux session with an auto-generated
+# pronounceable name (3–5 chars, alternating consonant/vowel). For specific
+# work run `tx <name>` to switch into a project-defined session from
+# ~/.config/sessions.toml. Run `sp` any time to bring up the fzf session
+# picker. Set NO_TMUX_AUTO=1 to skip and land in plain zsh instead.
 if [[ -o interactive ]] \
   && [[ -z "$TMUX" ]] \
   && [[ -z "$NO_TMUX_AUTO" ]] \
-  && command -v tmux &>/dev/null \
-  && command -v session-picker &>/dev/null; then
-  session-picker --auto
+  && command -v tmux &>/dev/null; then
+  _LKS_NAME=$(python3 -c '
+import random
+c, v = "bcdfghjklmnpqrstvw", "aeiou"
+n = random.randint(3, 5)
+print("".join((c if i%2==0 else v)[random.randrange(len(c if i%2==0 else v))] for i in range(n)))
+' 2>/dev/null)
+  if [[ -n "$_LKS_NAME" ]]; then
+    while tmux has-session -t "=$_LKS_NAME" 2>/dev/null; do
+      _LKS_NAME="${_LKS_NAME}$((RANDOM % 10))"
+    done
+    tmux new-session -A -s "$_LKS_NAME"
+  fi
+  unset _LKS_NAME
 fi
+
+# ─── sp — on-demand session picker (fzf over sessions.toml + live tmux) ──────
+alias sp='session-picker'
 
 # ─── tx — direct attach by name, picker on no-arg ─────────────────────────────
 tx() {

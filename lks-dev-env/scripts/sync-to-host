@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# sync-to-host <host> — push the lks-dev-env repo to a remote, idempotently.
+#
+# Computes a fast content hash of the local dev-env tree (mtime+size manifest
+# of the config-bearing dirs). Compares to the remote's cached hash at
+# ~/.cache/lks-dev-env-hash. Only rsyncs + re-runs install.sh if they differ.
+#
+# Exits 0 on no-op (in sync), 0 on successful sync, non-zero on rsync/ssh
+# failure. Designed to be called inline by tx-remote before every SSH so the
+# remote always boots with the freshest tmux.conf / zshrc / starship.toml.
+#
+# Skip via SYNC_SKIP=1 sync-to-host <host> if you want to bypass for a turn.
+set -euo pipefail
+
+HOST="${1:-}"
+[ -n "$HOST" ] || { echo "usage: sync-to-host <host>" >&2; exit 2; }
+[ "${SYNC_SKIP:-0}" = "1" ] && { exit 0; }
+
+REPO="$HOME/tools/lks-dev-env"
+[ -d "$REPO" ] || { echo "sync-to-host: $REPO not found" >&2; exit 2; }
+
+# Manifest hash — covers everything install.sh symlinks plus modules + flake.
+# Fast enough to run on every SSH invocation (<50ms locally).
+LOCAL_HASH=$(
+  cd "$REPO"
+  find tmux zsh starship scripts modules flake.nix install.sh \
+       -type f -printf '%p %s %T@\n' 2>/dev/null | sort | sha256sum | cut -c1-16
+)
+
+REMOTE_HASH=$(
+  ssh -o ConnectTimeout=5 -o BatchMode=no "$HOST" \
+    'cat ~/.cache/lks-dev-env-hash 2>/dev/null || true' || echo ""
+)
+
+if [ "$LOCAL_HASH" = "$REMOTE_HASH" ] && [ -n "$REMOTE_HASH" ]; then
+  exit 0
+fi
+
+echo "→ sync-to-host: pushing lks-dev-env to $HOST" >&2
+echo "  local=$LOCAL_HASH  remote=${REMOTE_HASH:-(none)}" >&2
+
+rsync -az --delete \
+  --exclude='.git' \
+  --exclude='result' \
+  --exclude='sticky-fingers/target' \
+  --exclude='lazyvim/.git' \
+  "$REPO/" "$HOST:tools/lks-dev-env/" >&2
+
+ssh "$HOST" "
+  set -e
+  cd ~/tools/lks-dev-env
+  ./install.sh
+  mkdir -p ~/.cache
+  printf '%s\n' '$LOCAL_HASH' > ~/.cache/lks-dev-env-hash
+" >&2
+
+echo "→ sync-to-host: done" >&2

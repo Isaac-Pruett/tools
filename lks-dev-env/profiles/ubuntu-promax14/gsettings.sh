@@ -83,6 +83,18 @@ gsettings set "$SCHEMA:$KB_BASE/custom7/" name    'Move window to monitor 3'
 gsettings set "$SCHEMA:$KB_BASE/custom7/" command "$HOME/.local/bin/move-to-monitor 3"
 gsettings set "$SCHEMA:$KB_BASE/custom7/" binding '<Super><Alt>3'
 
+# Mnemonic 1:1 aliases for the same monitor-move action.
+# L=LG (1), S=Samsung (2), D=Dell built-in (3). Same commands as custom5/6/7.
+gsettings set "$SCHEMA:$KB_BASE/mon-l/" name    'Move window to LG (monitor 1)'
+gsettings set "$SCHEMA:$KB_BASE/mon-l/" command "$HOME/.local/bin/move-to-monitor 1"
+gsettings set "$SCHEMA:$KB_BASE/mon-l/" binding '<Super><Alt>l'
+gsettings set "$SCHEMA:$KB_BASE/mon-s/" name    'Move window to Samsung (monitor 2)'
+gsettings set "$SCHEMA:$KB_BASE/mon-s/" command "$HOME/.local/bin/move-to-monitor 2"
+gsettings set "$SCHEMA:$KB_BASE/mon-s/" binding '<Super><Alt>s'
+gsettings set "$SCHEMA:$KB_BASE/mon-d/" name    'Move window to Dell built-in (monitor 3)'
+gsettings set "$SCHEMA:$KB_BASE/mon-d/" command "$HOME/.local/bin/move-to-monitor 3"
+gsettings set "$SCHEMA:$KB_BASE/mon-d/" binding '<Super><Alt>d'
+
 # focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S
 # Each runs focus-app, which calls `wmctrl -xa <class>` to raise the existing
 # window; if no window exists, it launches the app fresh.
@@ -113,13 +125,18 @@ dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 # Build the array from the explicit list above. ANY future custom binding must
 # be added to BOTH a new slot block AND this array literal.
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/']"
+  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/']"
 
 # Adding NEW custom-keybinding slots (not just editing existing ones) requires
 # gsd-media-keys to re-read its config. It caches the slot list at startup and
-# doesn't dynamically pick up new entries. Restart it so this script's changes
-# take effect immediately — otherwise the user has to log out + back in.
+# doesn't dynamically pick up new entries. We kill it AND explicitly respawn
+# it — gnome-session does NOT auto-restart gsd-media-keys after a killall, so
+# without an explicit relaunch you lose F12 lock + Super+L + every custom
+# binding until next login. Learned this the hard way 2026-06-02.
 echo "→ gsettings: restarting gsd-media-keys to pick up any new slots"
 killall gsd-media-keys 2>/dev/null && sleep 0.5 || true
+setsid -f /usr/libexec/gsd-media-keys </dev/null >/dev/null 2>&1 &
+sleep 0.3
+pgrep -f /usr/libexec/gsd-media-keys >/dev/null && echo "  gsd-media-keys back up" || echo "  WARN: gsd-media-keys failed to respawn"
 
 echo "→ gsettings: done"

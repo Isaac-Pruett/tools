@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# tx-remote <host> [session] — sync the dev-env to a remote host, then SSH in
+# and attach (or create) a tmux session there.
+#
+# Designed to be invoked from a tmux keybind that creates a new local window:
+#   bind G new-window -n remote-host"tx-remote myhost"
+#
+# The local tmux pane runs SSH directly — no new OS window — so encoding goes
+# through your local tmux's TERM (tmux-256color, widely understood). Remote
+# tmux uses Alt+W prefix (set by hostname conditional in the synced tmux.conf),
+# so its bindings never collide with the laptop's Alt+E.
+set -e
+
+HOST="${1:-}"
+SESSION="${2:-main}"
+[ -n "$HOST" ] || { echo "usage: tx-remote <host> [session]" >&2; exit 2; }
+
+# Sync first — no-op if already in sync. Failure here is non-fatal: we still
+# try to SSH so a flaky network doesn't lock you out of remote entirely.
+if ! "$HOME/.local/bin/sync-to-host" "$HOST"; then
+  echo "→ tx-remote: sync failed; continuing to SSH anyway" >&2
+fi
+
+# TERM=xterm-256color belt-and-suspenders for hosts whose terminfo db lacks
+# tmux-256color or xterm-ghostty. The remote tmux re-sets TERM to its own
+# value inside the session, so this only affects the brief SSH shell before
+# tmux attaches.
+exec ssh -t "$HOST" "TERM=xterm-256color tmux new -A -s '$SESSION'"

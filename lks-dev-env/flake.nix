@@ -33,6 +33,12 @@
         dev        = pkgs.mkShell { packages = builtins.attrValues (core // shell // editors // system); };
         networking = pkgs.mkShell { packages = builtins.attrValues (core // shell // networking); };
         pentest    = pkgs.mkShell { packages = builtins.attrValues (core // shell // networking // pentest); };
+        # remote: profile pushed to headless servers (Linux, no GUI). Same
+        # core/shell so tmux + zsh feel identical to the laptop, plus editors
+        # and system tools for on-host fixes, and networking for diag.
+        # Skips pentest (server doesn't need brute-forcers) and personal
+        # (sticky-fingers is a desktop tool).
+        remote     = pkgs.mkShell { packages = builtins.attrValues (core // shell // editors // system // networking); };
       };
     };
   };
