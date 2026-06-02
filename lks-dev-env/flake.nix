@@ -9,6 +9,10 @@
   outputs = inputs: inputs.flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" "aarch64-darwin" "aarch64-linux" ];
 
+    # Declarative dotfile install for any host running home-manager.
+    # See modules/home-manager.nix for usage + options.
+    flake.homeManagerModules.default = ./modules/home-manager.nix;
+
     perSystem = { pkgs, self', ... }:
     let
       core       = import ./modules/core.nix       { inherit pkgs; };
