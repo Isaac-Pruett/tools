@@ -3,7 +3,8 @@
 # and attach (or create) a tmux session there.
 #
 # Designed to be invoked from a tmux keybind that creates a new local window:
-#   bind G new-window -n remote-host"tx-remote myhost"
+#   bind G new-window -n remote "tx-remote myhost"
+# (Keep host-specific bindings in ~/.tmux.conf.local, not in the public repo.)
 #
 # The local tmux pane runs SSH directly — no new OS window — so encoding goes
 # through your local tmux's TERM (tmux-256color, widely understood). Remote
@@ -16,7 +17,7 @@ SESSION="${2:-main}"
 [ -n "$HOST" ] || { echo "usage: tx-remote <host> [session]" >&2; exit 2; }
 
 # Sync first — no-op if already in sync. Failure here is non-fatal: we still
-# try to SSH so a flaky network doesn't lock you out of remote entirely.
+# try to SSH so a flaky network doesn't lock you out of the remote entirely.
 if ! "$HOME/.local/bin/sync-to-host" "$HOST"; then
   echo "→ tx-remote: sync failed; continuing to SSH anyway" >&2
 fi

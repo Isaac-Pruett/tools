@@ -26,7 +26,7 @@ Then re-run `install.sh`. Idempotent — safe to re-run any time.
 |---|---|---|
 | `ubuntu-promax14/` | Active on Dell Pro Max 14 MC14250 (this machine — Intel Arrow Lake-P) | Ubuntu GNOME on X11, with desktop hint-mode navigation via warpd |
 | `wayland-tiling/` | Placeholder | Future Wayland laptop running Niri or Sway with home-manager |
-| `nixos/` | Placeholder | Future NixOS workstation (declarative, declarative) |
+| `nixos/` | Placeholder | Future NixOS workstation (declarative system + home-manager) |
 
 Each profile owns its own:
 - `README.md` — describes the machine state this profile assumes, and what it does

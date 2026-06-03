@@ -100,7 +100,7 @@ Builds a frecency database of directories you visit. Gets smarter over time.
 
 ```bash
 z proj              # jump to the most frecent dir matching "proj"
-z mer auto          # multi-token: matches "my-tool-name" etc
+z my pro            # multi-token: matches "my-project-name" etc
 zi                  # interactive fuzzy picker of all frecent dirs
 z -                 # go back to previous directory (like cd -)
 ```

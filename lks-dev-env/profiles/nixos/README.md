@@ -7,7 +7,7 @@
 A NixOS-managed workstation. Likely candidates:
 - A successor to the current Ubuntu Dell that's been migrated to NixOS
 - A new desktop / server box where declarative config is preferred from day one
-- The declarative work machines, which already run NixOS (see `~/dev/my-project/nixos/` for prior art)
+- Any future host where the full system + user environment is owned by a Nix flake
 
 ## Why this is its own profile
 
@@ -16,7 +16,7 @@ On NixOS, almost nothing in the ubuntu-desktop profile applies directly:
 - No need for `~/.npm-global` workaround (npm packages can go through nixpkgs)
 - No need for `services.gnome.at-spi2-core.enable` as a profile step (it's a NixOS option that lives in the system flake)
 - `home-manager` may or may not be in use — TBD
-- system-update, the workstation stack, and friends are all consumable as Nix packages via the my-project flake
+- Anything currently apt-installed becomes a Nix package via the system flake instead
 
 ## What this profile would manage
 
