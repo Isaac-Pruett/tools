@@ -159,44 +159,52 @@ def cmd_list():
 def main():
     args = sys.argv[1:]
 
-    if "--list" in args:
+    # Mode flags (any position, any order)
+    list_mode   = "--list" in args
+    tail_mode   = "--tail" in args
+    path_mode   = "--path" in args
+    append_mode = "-" in args
+
+    # -n VALUE for --tail
+    n_val = 50
+    if "-n" in args:
+        idx = args.index("-n")
+        if idx + 1 < len(args):
+            try:
+                n_val = int(args[idx + 1])
+            except ValueError:
+                pass
+
+    # Positional name = first arg that isn't a flag / sentinel / -n value
+    positional = []
+    skip_next = False
+    for a in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if a == "-n":
+            skip_next = True
+            continue
+        if a in ("-", "--list", "--tail", "--path") or a.startswith("--"):
+            continue
+        positional.append(a)
+    name = positional[0] if positional else None
+
+    if list_mode:
         return cmd_list()
 
-    if "--tail" in args:
-        n = 50
-        if "-n" in args:
-            i = args.index("-n")
-            if i + 1 < len(args):
-                try:
-                    n = int(args[i + 1])
-                except ValueError:
-                    pass
-        name = (args[0] if args and not args[0].startswith("-") else None) \
-            or current_tmux_session()
-        if not name:
-            sys.exit("ctx: not in a tmux session and no name given")
-        return cmd_tail(name, n)
-
-    if "--path" in args:
+    if name is None:
         name = current_tmux_session()
-        if not name:
-            sys.exit("ctx: not in a tmux session")
-        return cmd_path(name)
-
-    if args and args[0] == "-":
-        name = current_tmux_session()
-        if not name:
-            sys.exit("ctx: not in a tmux session")
-        return cmd_append_stdin(name)
-
-    if args and not args[0].startswith("--"):
-        return cmd_edit(args[0])
-
-    # No args → edit current
-    name = current_tmux_session()
     if not name:
-        sys.exit("ctx: not in a tmux session; pass a session name")
-    cmd_edit(name)
+        sys.exit("ctx: not in a tmux session and no name given")
+
+    if tail_mode:
+        return cmd_tail(name, n_val)
+    if path_mode:
+        return cmd_path(name)
+    if append_mode:
+        return cmd_append_stdin(name)
+    return cmd_edit(name)
 
 
 if __name__ == "__main__":
