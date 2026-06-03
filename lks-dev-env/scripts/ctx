@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""ctx — manage per-session context notes.
+
+Each tmux session has an associated ctx.md at
+~/notebook/sessions/<group>/<name>/ctx.md. This tool edits / appends to /
+inspects those files. See ~/.config/sessions/*.toml for session inventory.
+
+Usage:
+  ctx                       open current tmux session's ctx.md in $EDITOR
+  ctx <session>             open that session's ctx.md
+  ctx -                     append from stdin with timestamp header
+  ctx --tail [-n N]         cat last N lines (default 50) of current session's ctx.md
+  ctx --list                list every session with a ctx file + its size
+  ctx --path                print the current session's ctx.md path (no edit)
+
+The append format mirrors /sss-style CTX blocks so the work-log sync can
+later read these too:
+
+  ## CTX YYYY-MM-DD HH:MM
+
+  <body>
+"""
+import os
+import subprocess
+import sys
+import tomllib
+from datetime import datetime
+from pathlib import Path
+
+CONFIG_DIR = Path.home() / ".config" / "sessions"
+LEGACY_CONFIG = Path.home() / ".config" / "sessions.toml"
+NOTEBOOK_SESSIONS = Path.home() / "notebook" / "sessions"
+
+
+def _iter_config_files():
+    if CONFIG_DIR.exists():
+        for p in sorted(CONFIG_DIR.glob("*.toml")):
+            yield p
+    if LEGACY_CONFIG.exists():
+        yield LEGACY_CONFIG
+
+
+def load_sessions():
+    """Return {name: entry} merged across all session TOMLs."""
+    by_name = {}
+    for path in _iter_config_files():
+        try:
+            with open(path, "rb") as f:
+                data = tomllib.load(f)
+        except Exception:
+            continue
+        for s in data.get("session", []):
+            n = s.get("name")
+            if n and n not in by_name:
+                by_name[n] = dict(s)
+        for legacy_group in ("tool", "project", "branch", "bare", "study", "utility"):
+            for item in data.get(legacy_group, []):
+                n = item.get("name")
+                if n and n not in by_name:
+                    entry = dict(item)
+                    entry["group"] = legacy_group
+                    by_name[n] = entry
+    return by_name
+
+
+def current_tmux_session():
+    try:
+        out = subprocess.check_output(
+            ["tmux", "display-message", "-p", "#S"],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+        return out.strip()
+    except Exception:
+        return None
+
+
+def ctx_path_for(name):
+    """Return Path to the session's ctx.md (creating parent dirs is the caller's job).
+
+    Falls back to ~/notebook/sessions/_unsorted/<name>/ctx.md if the session is
+    not in any config TOML — so ad-hoc tmux sessions also get a place for notes.
+    """
+    sessions = load_sessions()
+    s = sessions.get(name)
+    if s is None:
+        return NOTEBOOK_SESSIONS / "_unsorted" / name / "ctx.md"
+    if s.get("ctx"):
+        return Path(os.path.expanduser(s["ctx"]))
+    group = s.get("group", "bare")
+    return NOTEBOOK_SESSIONS / group / name / "ctx.md"
+
+
+def ensure_ctx_file(name):
+    p = ctx_path_for(name)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        sessions = load_sessions()
+        group = sessions.get(name, {}).get("group", "bare")
+        p.write_text(f"# ctx — {name} ({group})\n")
+    return p
+
+
+def cmd_edit(name):
+    p = ensure_ctx_file(name)
+    editor = os.environ.get("EDITOR") or "nvim"
+    os.execvp(editor, [editor, str(p)])
+
+
+def cmd_append_stdin(name):
+    body = sys.stdin.read()
+    if not body.strip():
+        sys.stderr.write("ctx: stdin empty, nothing appended\n")
+        return
+    p = ensure_ctx_file(name)
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    block = f"\n## CTX {ts}\n\n{body.rstrip()}\n"
+    with open(p, "a") as f:
+        f.write(block)
+    print(f"ctx: appended {len(body)} bytes to {p}", file=sys.stderr)
+
+
+def cmd_tail(name, n=50):
+    p = ctx_path_for(name)
+    if not p.exists():
+        return
+    lines = p.read_text().splitlines()
+    sys.stdout.write("\n".join(lines[-n:]) + "\n")
+
+
+def cmd_path(name):
+    print(ctx_path_for(name))
+
+
+def cmd_list():
+    if not NOTEBOOK_SESSIONS.exists():
+        print("(no notebook/sessions/ dir yet)")
+        return
+    rows = []
+    for group_dir in sorted(NOTEBOOK_SESSIONS.iterdir()):
+        if not group_dir.is_dir():
+            continue
+        for session_dir in sorted(group_dir.iterdir()):
+            if not session_dir.is_dir():
+                continue
+            ctx_file = session_dir / "ctx.md"
+            if not ctx_file.exists():
+                continue
+            size = ctx_file.stat().st_size
+            rows.append((group_dir.name, session_dir.name, size))
+    if not rows:
+        print("(no ctx.md files yet)")
+        return
+    g_w = max(len(g) for g, _, _ in rows)
+    n_w = max(len(n) for _, n, _ in rows)
+    for g, n, s in rows:
+        print(f"{g:<{g_w}}  {n:<{n_w}}  {s:>6}B")
+
+
+def main():
+    args = sys.argv[1:]
+
+    if "--list" in args:
+        return cmd_list()
+
+    if "--tail" in args:
+        n = 50
+        if "-n" in args:
+            i = args.index("-n")
+            if i + 1 < len(args):
+                try:
+                    n = int(args[i + 1])
+                except ValueError:
+                    pass
+        name = (args[0] if args and not args[0].startswith("-") else None) \
+            or current_tmux_session()
+        if not name:
+            sys.exit("ctx: not in a tmux session and no name given")
+        return cmd_tail(name, n)
+
+    if "--path" in args:
+        name = current_tmux_session()
+        if not name:
+            sys.exit("ctx: not in a tmux session")
+        return cmd_path(name)
+
+    if args and args[0] == "-":
+        name = current_tmux_session()
+        if not name:
+            sys.exit("ctx: not in a tmux session")
+        return cmd_append_stdin(name)
+
+    if args and not args[0].startswith("--"):
+        return cmd_edit(args[0])
+
+    # No args → edit current
+    name = current_tmux_session()
+    if not name:
+        sys.exit("ctx: not in a tmux session; pass a session name")
+    cmd_edit(name)
+
+
+if __name__ == "__main__":
+    main()

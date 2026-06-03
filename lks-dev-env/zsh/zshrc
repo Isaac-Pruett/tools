@@ -115,17 +115,61 @@ fi
 # ─── sp — on-demand session picker (fzf over sessions.toml + live tmux) ──────
 alias sp='session-picker'
 
-# ─── tx — direct attach by name, picker on no-arg ─────────────────────────────
+# ─── tx — attach/switch by name; create with --group ──────────────────────────
+# Usage:
+#   tx                                       picker (no args)
+#   tx <name>                                attach if exists; else picker --query
+#   tx <name> --group <g>                    create new entry, attach
+#                                            (group: study/tool/project/bare/utility/<any>)
+#   tx <name> --group <g> --path <p>         explicit path override
+#   tx <name> --group utility --cmd <c>      utility group with a command
+#   tx <name> --group branch --parent <p> --branch <b> --worktree <w>
+#
+# Behind --group: tx-mk appends the [[session]] entry to
+# ~/.config/sessions/50-scratch.toml, mkdir's the path, materializes the ctx
+# dir + ctx.md, and (for non-default paths) drops a `workspace` symlink at
+# ~/notebook/sessions/<group>/<name>/workspace.
 tx() {
-  local name=$1
+  local name= group= path= cmd= parent= branch= worktree=
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --group)    group=$2; shift 2 ;;
+      --path)     path=$2; shift 2 ;;
+      --cmd)      cmd=$2; shift 2 ;;
+      --parent)   parent=$2; shift 2 ;;
+      --branch)   branch=$2; shift 2 ;;
+      --worktree) worktree=$2; shift 2 ;;
+      --*)        echo "tx: unknown flag: $1" >&2; return 1 ;;
+      *)          [ -z "$name" ] && name=$1 || { echo "tx: extra positional: $1" >&2; return 1; }
+                  shift ;;
+    esac
+  done
+
   if [ -z "$name" ]; then
     session-picker
-  elif tmux has-session -t "=$name" 2>/dev/null; then
+    return
+  fi
+
+  if tmux has-session -t "=$name" 2>/dev/null; then
+    [ -n "$group" ] && echo "tx: session '$name' already exists; ignoring --group" >&2
     if [ -n "$TMUX" ]; then
       tmux switch-client -t "=$name"
     else
       tmux attach-session -t "=$name"
     fi
+    return
+  fi
+
+  if [ -n "$group" ]; then
+    local mk_args=("$name" "--group" "$group")
+    [ -n "$path" ]     && mk_args+=(--path "$path")
+    [ -n "$cmd" ]      && mk_args+=(--cmd "$cmd")
+    [ -n "$parent" ]   && mk_args+=(--parent "$parent")
+    [ -n "$branch" ]   && mk_args+=(--branch "$branch")
+    [ -n "$worktree" ] && mk_args+=(--worktree "$worktree")
+    tx-mk "${mk_args[@]}" || return $?
+    # New entry now in 50-scratch.toml — picker direct-name path will dispatch.
+    session-picker "$name"
   else
     session-picker --query "$name"
   fi

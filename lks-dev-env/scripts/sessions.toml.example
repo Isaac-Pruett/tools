@@ -1,47 +1,70 @@
-# Template for ~/.config/sessions.toml
-# Copy to ~/.config/sessions.toml and edit. install.sh copies this automatically
-# if no ~/.config/sessions.toml is present.
+# Template for ~/.config/sessions/10-canon.toml
 #
-# Schema:
-#   [[tool]]      personal/utility repos
-#   [[project]]   standalone projects
-#   [[branch]]    per-branch worktrees of a parent project
-#   [[bare]]      a directory with no repo
-#   [[utility]]   a command (like btop / htop) that runs in the session
-#   [cockpit]     default monitor → session assignments
+# Multi-file layout — session-picker globs ~/.config/sessions/*.toml in sorted
+# order; lower-numbered files take precedence on name conflict. Suggested
+# layering:
 #
-# Every name field becomes a tmux session name. Names must be unique across all
-# tables. Path fields support ~ for $HOME.
+#   10-canon.toml    public personal canon (this file). Eventually nix-generated.
+#   20-work.toml     machine-local work overlay (never push to a public repo).
+#   50-scratch.toml  ad-hoc sessions added by `tx --group` (auto-managed).
+#   99-local.toml    private/machine-specific (never tracked).
+#
+# Schema — one polymorphic [[session]] table, dispatched via the `group` field:
+#
+#   [[session]]
+#   name           required, unique tmux session name
+#   group          required: tool / project / branch / bare / study / utility
+#                  (or any new value — picker treats unknown as path-shaped)
+#   path           optional working dir; defaults to
+#                  ~/notebook/sessions/<group>/<name>/ when omitted
+#   ctx            optional path to ctx.md
+#   default_branch optional, for git-aware sessions
+#   command        optional, for utility sessions
+#   parent/worktree/branch  optional, for branch group only
 
-# ─── Tools ────────────────────────────────────────────────────────────────────
-[[tool]]
+# ─── Tools (personal repos) ───────────────────────────────────────────────────
+[[session]]
 name = "my-tool-repo"
+group = "tool"
 path = "~/code/my-tool-repo"
 default_branch = "main"
 
-# ─── Projects ─────────────────────────────────────────────────────────────────
-[[project]]
+# ─── Standalone projects ──────────────────────────────────────────────────────
+[[session]]
 name = "example-project"
+group = "project"
 path = "~/code/example-project"
 default_branch = "main"
 
-# ─── Branch subprojects ───────────────────────────────────────────────────────
-# When you pick this session, picker cd's to the worktree dir. If the dir
-# doesn't exist, picker prints the `git worktree add` command needed and exits.
-[[branch]]
+# ─── Branch subprojects (each in its own worktree) ────────────────────────────
+# If the worktree dir doesn't exist, picker prints the `git worktree add`
+# command needed and exits.
+[[session]]
 name = "feature-x"
+group = "branch"
+parent = "example-project"
 worktree = "~/code/example-project-worktrees/feature-x"
 branch = "feature/x"
-parent = "example-project"
 
 # ─── Bare directories ─────────────────────────────────────────────────────────
-[[bare]]
+[[session]]
 name = "scratch"
+group = "bare"
 path = "~/scratch"
 
-# ─── Utilities ────────────────────────────────────────────────────────────────
-[[utility]]
+# ─── Study sessions (learning / research) ─────────────────────────────────────
+# `tx <name> --group study` from the shell auto-appends entries like this to
+# 50-scratch.toml. Path defaults to ~/notebook/sessions/study/<name>/ — the
+# ctx dir IS the workspace for study sessions.
+[[session]]
+name = "example-study"
+group = "study"
+# path omitted → defaults to ~/notebook/sessions/study/example-study/
+
+# ─── Utilities (run a command on session start) ───────────────────────────────
+[[session]]
 name = "btop"
+group = "utility"
 command = "btop"
 
 # ─── Cockpit ──────────────────────────────────────────────────────────────────

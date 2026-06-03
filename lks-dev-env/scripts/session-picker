@@ -1,9 +1,33 @@
 #!/usr/bin/env python3
 """Project-aware tmux session picker.
 
-Reads ~/.config/sessions.toml, lists existing detached/attached tmux sessions
-and toml-defined projects, presents an fzf picker, and attaches/creates the
-selected session. Updates ~/.cache/sessions-mru for cockpit MRU lookup.
+Reads ~/.config/sessions/*.toml (multi-file layout — see CONFIG_DIR below),
+lists existing detached/attached tmux sessions and toml-defined projects,
+presents an fzf picker, and attaches/creates the selected session. Updates
+~/.cache/sessions-mru for cockpit MRU lookup.
+
+Schema: each session is a [[session]] entry with these fields:
+  name           required, unique tmux session name
+  group          required (tool / project / branch / bare / study / utility,
+                 or any new value — unknown groups dispatch as path-shaped)
+  path           optional, working dir; defaults to
+                 ~/notebook/sessions/<group>/<name>/ when group is path-shaped
+  ctx            optional path to ctx.md; defaults to <ctx-dir>/ctx.md
+  default_branch optional, for git-aware sessions
+  command        optional, for utility sessions
+  parent/worktree/branch  optional, for branch group only
+
+For backward compatibility, legacy [[tool]] [[project]] [[branch]] [[bare]]
+[[utility]] sections are still read and folded into the unified session list.
+
+Multi-file precedence: files in ~/.config/sessions/ are read in sorted order;
+lower-numbered files take precedence on name conflict. The legacy single
+~/.config/sessions.toml (if present) is read last (lowest precedence).
+
+Side effects on dispatch:
+- For non-`study` groups whose path is OUTSIDE the ctx dir, a `workspace`
+  symlink is created at ~/notebook/sessions/<group>/<name>/workspace → path.
+- The ctx dir + ctx.md are mkdir-p'd + seeded on first dispatch.
 
 Usage:
   session-picker            interactive fzf picker
@@ -17,21 +41,137 @@ import sys
 import tomllib
 from pathlib import Path
 
-CONFIG_PATH = Path.home() / ".config" / "sessions.toml"
+CONFIG_DIR = Path.home() / ".config" / "sessions"
+LEGACY_CONFIG = Path.home() / ".config" / "sessions.toml"
+NOTEBOOK_SESSIONS = Path.home() / "notebook" / "sessions"
 MRU_PATH = Path.home() / ".cache" / "sessions-mru"
 MRU_MAX = 20
 
+# Path-shaped groups handled identically by the picker. Anything not in
+# branch/utility falls through here.
+PATH_SHAPED_GROUPS = {"tool", "project", "bare", "study"}
+
+# Default-path generator per group. None means "no default — explicit required".
+GROUP_DEFAULT_PATH = {
+    "study":   lambda n: NOTEBOOK_SESSIONS / "study" / n,
+    "bare":    lambda n: Path.home() / n,
+    # tool / project default-path is left to the user (more workspace-y locations)
+}
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Config + tmux state
+# Config loading
+
+def _iter_config_files():
+    """Yield TOML files in load order. Sorted dir entries first, legacy last."""
+    if CONFIG_DIR.exists():
+        for p in sorted(CONFIG_DIR.glob("*.toml")):
+            yield p
+    if LEGACY_CONFIG.exists():
+        yield LEGACY_CONFIG
+
 
 def load_config():
-    if not CONFIG_PATH.exists():
-        return {}
-    with open(CONFIG_PATH, "rb") as f:
-        return tomllib.load(f)
+    """Merge all session TOMLs. Returns {"sessions": [...], "cockpit": {...}}.
+
+    First-seen wins on name (lower-numbered files take precedence). Legacy
+    section names ([[tool]] [[project]] etc.) are translated into [[session]]
+    entries with group=<section-name> on the fly.
+    """
+    sessions_by_name = {}
+    cockpit = {}
+
+    for path in _iter_config_files():
+        try:
+            with open(path, "rb") as f:
+                data = tomllib.load(f)
+        except Exception as e:
+            sys.stderr.write(f"session-picker: warning: failed to parse {path}: {e}\n")
+            continue
+
+        # New unified schema
+        for s in data.get("session", []):
+            name = s.get("name")
+            if not name or name in sessions_by_name:
+                continue
+            sessions_by_name[name] = dict(s)
+
+        # Legacy per-kind sections — fold into unified shape
+        for legacy_group in ("tool", "project", "branch", "bare", "study", "utility"):
+            for item in data.get(legacy_group, []):
+                name = item.get("name")
+                if not name or name in sessions_by_name:
+                    continue
+                entry = dict(item)
+                entry["group"] = legacy_group
+                sessions_by_name[name] = entry
+
+        # Cockpit: first file with [cockpit] wins
+        if "cockpit" in data and not cockpit:
+            cockpit = data["cockpit"]
+
+    return {"sessions": list(sessions_by_name.values()), "cockpit": cockpit}
+
 
 def expand(p):
     return os.path.expanduser(p) if p else p
+
+
+def resolve_path(s):
+    """Return the working path for a session entry, or None if not path-shaped."""
+    group = s.get("group", "bare")
+    if group in ("branch", "utility"):
+        return None
+    if "path" in s and s["path"]:
+        return expand(s["path"])
+    if group in GROUP_DEFAULT_PATH:
+        return str(GROUP_DEFAULT_PATH[group](s["name"]))
+    # Fallback: any unknown group lands under notebook/sessions/<group>/<name>/
+    return str(NOTEBOOK_SESSIONS / group / s["name"])
+
+
+def resolve_ctx_dir(s):
+    """Return the per-session notebook dir (always under NOTEBOOK_SESSIONS)."""
+    group = s.get("group", "bare")
+    return NOTEBOOK_SESSIONS / group / s["name"]
+
+
+def resolve_ctx_file(s):
+    """Return the per-session ctx.md path (explicit `ctx` field or default)."""
+    if "ctx" in s and s["ctx"]:
+        return Path(expand(s["ctx"]))
+    return resolve_ctx_dir(s) / "ctx.md"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Side effects (mkdir, ctx seed, workspace symlink)
+
+def materialize_session_dir(s):
+    """mkdir the ctx dir + workspace symlink + seed ctx.md. Idempotent."""
+    ctx_dir = resolve_ctx_dir(s)
+    ctx_dir.mkdir(parents=True, exist_ok=True)
+
+    ctx_file = resolve_ctx_file(s)
+    if not ctx_file.exists():
+        ctx_file.parent.mkdir(parents=True, exist_ok=True)
+        ctx_file.write_text(f"# ctx — {s['name']} ({s.get('group','bare')})\n")
+
+    # Workspace symlink: only when path resolves AND it's outside the ctx dir.
+    path = resolve_path(s)
+    if path:
+        path_p = Path(path).resolve() if Path(path).exists() else Path(path)
+        if path_p != ctx_dir:
+            ws = ctx_dir / "workspace"
+            try:
+                if ws.is_symlink() or ws.exists():
+                    ws.unlink()
+                ws.symlink_to(path_p)
+            except OSError:
+                pass  # symlink failures are non-fatal
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# tmux state
 
 def tmux_sessions():
     """List existing tmux sessions with attached/windows/last-activity."""
@@ -47,7 +187,8 @@ def tmux_sessions():
         return []
     rows = []
     for line in out.stdout.strip().split("\n"):
-        if not line: continue
+        if not line:
+            continue
         name, attached, windows, activity = line.split("\t")
         rows.append({
             "name": name,
@@ -57,6 +198,7 @@ def tmux_sessions():
         })
     return rows
 
+
 def rel_age(epoch_seconds):
     import time
     s = int(time.time()) - epoch_seconds
@@ -65,15 +207,12 @@ def rel_age(epoch_seconds):
     if s < 86400: return f"{s//3600}h ago"
     return f"{s//86400}d ago"
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Entry construction
 
 def build_entries(config, live):
-    """Build picker entries: detached/attached + toml-defined + ad-hoc/skip.
-
-    Each entry is a dict with: kind, name, label, help, action_fn.
-    """
-    live_by_name = {s["name"]: s for s in live}
+    """Build picker entries: live + toml-defined + ad-hoc/skip."""
     seen = set()
     entries = []
 
@@ -89,57 +228,61 @@ def build_entries(config, live):
         })
         seen.add(sess["name"])
 
-    # Build a name → path lookup of parent projects so branch entries can
-    # surface the right `git worktree add` hint when the dir is missing.
-    parent_paths = {p["name"]: expand(p["path"]) for p in config.get("project", [])}
+    # Build name → path for branch parent resolution.
+    parent_paths = {
+        s["name"]: resolve_path(s)
+        for s in config["sessions"]
+        if s.get("group") == "project"
+    }
 
-    # 2) Toml-defined entries (skip if a live session already shadows them)
-    for kind_key, tag, action_kind in [
-        ("tool",    "[tool]",     "create_path"),
-        ("project", "[project]",  "create_path"),
-        ("branch",  "[branch]",   "create_branch"),
-        ("bare",    "[bare]",     "create_path"),
-        ("utility", "[utility]",  "create_command"),
-    ]:
-        for item in config.get(kind_key, []):
-            name = item["name"]
-            if name in seen:
-                continue
-            if action_kind == "create_branch":
-                worktree = expand(item.get("worktree"))
-                branch = item.get("branch", "?")
-                parent = item.get("parent", "?")
-                help_txt = f"{parent} @ {branch}"
-                entries.append({
-                    "kind": kind_key,
-                    "name": name,
-                    "label": f"{tag:11s} {name:22s} {help_txt}",
-                    "action": (action_kind, name, {
-                        "worktree": worktree,
-                        "branch": branch,
-                        "parent_path": parent_paths.get(parent),
-                    }),
-                })
-            elif action_kind == "create_command":
-                cmd = item.get("command", "")
-                entries.append({
-                    "kind": kind_key,
-                    "name": name,
-                    "label": f"{tag:11s} {name:22s} {cmd}",
-                    "action": (action_kind, name, {"command": cmd}),
-                })
-            else:  # create_path
-                path = expand(item["path"])
-                help_txt = path
-                default_branch = item.get("default_branch")
-                if default_branch:
-                    help_txt += f"  (default {default_branch})"
-                entries.append({
-                    "kind": kind_key,
-                    "name": name,
-                    "label": f"{tag:11s} {name:22s} {help_txt}",
-                    "action": (action_kind, name, {"path": path, "default_branch": default_branch}),
-                })
+    # 2) Toml-defined sessions
+    for s in config["sessions"]:
+        name = s["name"]
+        if name in seen:
+            continue
+        group = s.get("group", "bare")
+        tag = f"[{group}]"
+
+        if group == "branch":
+            worktree = expand(s.get("worktree"))
+            branch = s.get("branch", "?")
+            parent = s.get("parent", "?")
+            entries.append({
+                "kind": group,
+                "name": name,
+                "label": f"{tag:11s} {name:22s} {parent} @ {branch}",
+                "action": ("create_branch", name, {
+                    "worktree": worktree,
+                    "branch": branch,
+                    "parent_path": parent_paths.get(parent),
+                    "entry": s,
+                }),
+            })
+        elif group == "utility":
+            cmd = s.get("command", "")
+            entries.append({
+                "kind": group,
+                "name": name,
+                "label": f"{tag:11s} {name:22s} {cmd}",
+                "action": ("create_command", name, {"command": cmd, "entry": s}),
+            })
+        else:
+            # Any other group → path-shaped (tool/project/bare/study/...).
+            path = resolve_path(s)
+            help_txt = path
+            default_branch = s.get("default_branch")
+            if default_branch:
+                help_txt += f"  (default {default_branch})"
+            entries.append({
+                "kind": group,
+                "name": name,
+                "label": f"{tag:11s} {name:22s} {help_txt}",
+                "action": ("create_path", name, {
+                    "path": path,
+                    "default_branch": default_branch,
+                    "entry": s,
+                }),
+            })
 
     # 3) Ad-hoc + skip (always last)
     entries.append({
@@ -157,6 +300,7 @@ def build_entries(config, live):
 
     return entries
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Action dispatch
 
@@ -168,9 +312,10 @@ def gen_pronounceable():
     length = random.randint(3, 5)
     return "".join((c if i % 2 == 0 else v)[random.randrange(len(c if i % 2 == 0 else v))] for i in range(length))
 
+
 def update_mru(name, kind):
-    """Push session name to top of MRU file. Skip live (already known) + utility + ad-hoc/skip."""
-    if kind in ("utility", "adhoc", "skip"):
+    """Push session name to top of MRU file. Skip live + utility + ad-hoc/skip."""
+    if kind in ("live", "utility", "adhoc", "skip"):
         return
     MRU_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -181,12 +326,14 @@ def update_mru(name, kind):
     existing.insert(0, name)
     MRU_PATH.write_text("\n".join(existing[:MRU_MAX]) + "\n")
 
+
 def attach_or_switch(name):
     """Attach (outside tmux) or switch-client (inside)."""
     if os.environ.get("TMUX"):
         os.execvp("tmux", ["tmux", "switch-client", "-t", f"={name}"])
     else:
         os.execvp("tmux", ["tmux", "attach-session", "-t", f"={name}"])
+
 
 def ensure_session(name, cwd=None, command=None):
     """Create the session detached if it doesn't exist."""
@@ -199,12 +346,13 @@ def ensure_session(name, cwd=None, command=None):
         args.append(command)
     subprocess.run(args, check=True)
 
+
 def dispatch(entry, kind, ensure_only=False):
     """Execute the chosen entry's action.
 
     If ensure_only=True: just create the session detached (no attach/exec).
-    Otherwise: exec-attach (replaces this process). MRU is updated only after
-    the action succeeds (so failures like missing worktrees don't pollute MRU).
+    Otherwise: exec-attach (replaces this process). MRU + ctx materialization
+    fire only after the path/worktree check passes.
     """
     action, name, data = entry["action"]
     final_name = name or entry["name"]
@@ -219,28 +367,42 @@ def dispatch(entry, kind, ensure_only=False):
                 break
             name = gen_pronounceable()
         ensure_session(name)
-        if ensure_only: return
+        if ensure_only:
+            return
         attach_or_switch(name)
 
     if action == "attach":
         update_mru(final_name, kind)
-        if ensure_only: return
+        if ensure_only:
+            return
         attach_or_switch(name)
 
     if action == "create_path":
         path = data["path"]
+        s = data.get("entry") or {"name": final_name, "group": kind, "path": path}
+        # Auto-mkdir the working path for groups whose default is under
+        # notebook/sessions/ (study/bare). For tool/project where path is
+        # explicit user choice, require the dir to exist (refuse silent creation
+        # at unexpected locations).
+        group = s.get("group", "bare")
         if not os.path.isdir(path):
-            sys.stderr.write(f"path not found: {path}\n")
-            sys.exit(2)
+            if group in ("study",) or path.startswith(str(NOTEBOOK_SESSIONS)):
+                os.makedirs(path, exist_ok=True)
+            else:
+                sys.stderr.write(f"path not found: {path}\n")
+                sys.exit(2)
+        materialize_session_dir(s)
         ensure_session(name, cwd=path)
         update_mru(final_name, kind)
-        if ensure_only: return
+        if ensure_only:
+            return
         attach_or_switch(name)
 
     if action == "create_branch":
         worktree = data["worktree"]
         branch = data["branch"]
         parent_path = data.get("parent_path")
+        s = data.get("entry") or {"name": final_name, "group": "branch"}
         if not os.path.isdir(worktree):
             cmd_hint = (
                 f"  git -C {parent_path} worktree add {worktree} {branch}"
@@ -252,30 +414,31 @@ def dispatch(entry, kind, ensure_only=False):
                 f"create with:\n{cmd_hint}\n\n"
             )
             sys.exit(2)
+        materialize_session_dir(s)
         ensure_session(name, cwd=worktree)
         update_mru(final_name, kind)
-        if ensure_only: return
+        if ensure_only:
+            return
         attach_or_switch(name)
 
     if action == "create_command":
+        s = data.get("entry") or {"name": final_name, "group": "utility"}
+        materialize_session_dir(s)
         ensure_session(name, command=data["command"])
         update_mru(final_name, kind)
-        if ensure_only: return
+        if ensure_only:
+            return
         attach_or_switch(name)
 
     sys.stderr.write(f"unknown action: {action}\n")
     sys.exit(2)
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # fzf interaction
 
 def run_fzf(entries, query=None):
-    """Show fzf picker. Returns the selected entry, or None for ESC.
-
-    Each line piped to fzf is: KEY<TAB>LABEL
-    KEY is "<kind>:<name>" so we can recover the entry after selection.
-    Only LABEL is displayed (via --with-nth=2).
-    """
+    """Show fzf picker. Returns the selected entry, or None for ESC."""
     lines = []
     by_key = {}
     for e in entries:
@@ -298,18 +461,18 @@ def run_fzf(entries, query=None):
         args += ["--query", query]
 
     res = subprocess.run(args, input=payload, capture_output=True)
-    if res.returncode == 130 or not res.stdout.strip():  # ESC
+    if res.returncode == 130 or not res.stdout.strip():
         return None
     chosen_line = res.stdout.decode().strip()
     key = chosen_line.split("\t", 1)[0]
     return by_key.get(key)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main
 
 def main():
     args = sys.argv[1:]
-    auto = "--auto" in args
     ensure_only = False
     query = None
     direct_name = None
@@ -344,6 +507,7 @@ def main():
         adhoc = next(e for e in entries if e["kind"] == "adhoc")
         return dispatch(adhoc, "adhoc")
     return dispatch(chosen, chosen["kind"])
+
 
 if __name__ == "__main__":
     main()
