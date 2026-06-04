@@ -11,6 +11,13 @@ font-size = 13
 # Pin explicitly so ghostty always launches zsh regardless of session $SHELL
 command = /home/lukas-shipley/.nix-profile/bin/zsh --login
 
+# Always start fresh windows in $HOME. Without this, Ctrl+Alt+T inherits
+# whatever cwd gnome-shell was last in (frequently ~/tools if a file
+# manager touched it), and the user gets dropped into the dotfiles repo
+# instead of home. New-windows-from-inside-ghostty (Ctrl+Shift+N) still
+# inherit the parent pane's cwd — that path is unaffected.
+working-directory = home
+
 # ─── Performance ──────────────────────────────────────────────────────────────
 # Ghostty uses its own GPU renderer; no equivalent to kitty's
 # sync_to_monitor / repaint_delay / input_delay knobs (handled internally).

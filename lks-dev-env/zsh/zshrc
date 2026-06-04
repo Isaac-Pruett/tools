@@ -130,6 +130,11 @@ alias sp='session-picker'
 # dir + ctx.md, and (for non-default paths) drops a `workspace` symlink at
 # ~/notebook/sessions/<group>/<name>/workspace.
 tx() {
+  # Refresh zsh's command-hash cache before resolving helper binaries.
+  # Without this, a shell started BEFORE install.sh symlinked new scripts
+  # (ctx, tx-mk) into ~/.local/bin/ won't see them — zsh hashed an empty
+  # result at startup and won't re-look-up. Cheap to do on every invocation.
+  hash -r 2>/dev/null
   local name= group= path= cmd= parent= branch= worktree=
   while [[ $# -gt 0 ]]; do
     case $1 in
