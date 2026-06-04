@@ -138,15 +138,15 @@ tx() {
   local name= group= path= cmd= parent= branch= worktree=
   while [[ $# -gt 0 ]]; do
     case $1 in
-      --group)    group=$2; shift 2 ;;
-      --path)     path=$2; shift 2 ;;
-      --cmd)      cmd=$2; shift 2 ;;
-      --parent)   parent=$2; shift 2 ;;
-      --branch)   branch=$2; shift 2 ;;
-      --worktree) worktree=$2; shift 2 ;;
-      --*)        echo "tx: unknown flag: $1" >&2; return 1 ;;
-      *)          [ -z "$name" ] && name=$1 || { echo "tx: extra positional: $1" >&2; return 1; }
-                  shift ;;
+      -g|--group)    group=$2; shift 2 ;;
+      -p|--path)     path=$2; shift 2 ;;
+      -c|--cmd)      cmd=$2; shift 2 ;;
+      -P|--parent)   parent=$2; shift 2 ;;
+      -b|--branch)   branch=$2; shift 2 ;;
+      -w|--worktree) worktree=$2; shift 2 ;;
+      -*)            echo "tx: unknown flag: $1" >&2; return 1 ;;
+      *)             [ -z "$name" ] && name=$1 || { echo "tx: extra positional: $1" >&2; return 1; }
+                     shift ;;
     esac
   done
 
