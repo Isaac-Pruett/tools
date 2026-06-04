@@ -105,6 +105,11 @@ gsettings set "$SCHEMA:$KB_BASE/mon-d/" binding '<Super><Alt>d'
 gsettings set org.gnome.settings-daemon.plugins.media-keys rotate-video-lock-static "['XF86RotationLockToggle']"
 gsettings set org.gnome.shell.keybindings toggle-quick-settings "[]"
 
+# Super+Alt+s defaults to GNOME a11y screen-reader toggle (Orca). It eats the
+# keypress before mon-s (Super+Alt+s → move to Samsung) can fire. Clear it.
+# Orca can still be toggled via Settings → Accessibility if needed.
+gsettings set org.gnome.settings-daemon.plugins.media-keys screenreader "[]"
+
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" name    'Focus Zen browser'
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" command "$HOME/.local/bin/focus-app zen"
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" binding '<Super>z'
