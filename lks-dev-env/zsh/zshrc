@@ -135,11 +135,14 @@ tx() {
   # (ctx, tx-mk) into ~/.local/bin/ won't see them — zsh hashed an empty
   # result at startup and won't re-look-up. Cheap to do on every invocation.
   hash -r 2>/dev/null
-  local name= group= path= cmd= parent= branch= worktree=
+  # NOTE: do NOT name a local "path" — zsh ties lowercase `path` to uppercase
+  # `PATH` (array form), so `local path=` would empty PATH inside the function
+  # and break every command lookup. Use loc_path / cwd_path / similar instead.
+  local name= group= loc_path= cmd= parent= branch= worktree=
   while [[ $# -gt 0 ]]; do
     case $1 in
       -g|--group)    group=$2; shift 2 ;;
-      -p|--path)     path=$2; shift 2 ;;
+      -p|--path)     loc_path=$2; shift 2 ;;
       -c|--cmd)      cmd=$2; shift 2 ;;
       -P|--parent)   parent=$2; shift 2 ;;
       -b|--branch)   branch=$2; shift 2 ;;
@@ -167,7 +170,7 @@ tx() {
 
   if [ -n "$group" ]; then
     local mk_args=("$name" "--group" "$group")
-    [ -n "$path" ]     && mk_args+=(--path "$path")
+    [ -n "$loc_path" ] && mk_args+=(--path "$loc_path")
     [ -n "$cmd" ]      && mk_args+=(--cmd "$cmd")
     [ -n "$parent" ]   && mk_args+=(--parent "$parent")
     [ -n "$branch" ]   && mk_args+=(--branch "$branch")
