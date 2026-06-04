@@ -114,6 +114,9 @@ gsettings set "$SCHEMA:$KB_BASE/focus-obsidian/" binding '<Super>o'
 gsettings set "$SCHEMA:$KB_BASE/focus-slack/" name    'Focus Slack'
 gsettings set "$SCHEMA:$KB_BASE/focus-slack/" command "$HOME/.local/bin/focus-app slack"
 gsettings set "$SCHEMA:$KB_BASE/focus-slack/" binding '<Super>s'
+gsettings set "$SCHEMA:$KB_BASE/focus-zed/" name    'Focus Zed (editor)'
+gsettings set "$SCHEMA:$KB_BASE/focus-zed/" command "$HOME/.local/bin/focus-app zed"
+gsettings set "$SCHEMA:$KB_BASE/focus-zed/" binding '<Super>e'
 
 # ─── Clean up stale orphan slots ──────────────────────────────────────────────
 # custom4 used to hold the kitty Ctrl+Alt+T binding before we moved to ghostty
@@ -125,7 +128,7 @@ dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 # Build the array from the explicit list above. ANY future custom binding must
 # be added to BOTH a new slot block AND this array literal.
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/']"
+  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/', '$KB_BASE/focus-zed/']"
 
 # Adding NEW custom-keybinding slots (not just editing existing ones) requires
 # gsd-media-keys to re-read its config. It caches the slot list at startup and

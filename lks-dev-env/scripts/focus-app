@@ -17,8 +17,14 @@ case "${1:-}" in
     wmctrl -xa Slack 2>/dev/null \
       || setsid /snap/bin/slack </dev/null >/dev/null 2>&1 &
     ;;
+  zed)
+    # WM_CLASS reports as `dev.zed.Zed` (per wmctrl -lx). Substring match works.
+    # Binary symlinked at ~/.local/bin/zed → ~/.local/zed.app/bin/zed.
+    wmctrl -xa dev.zed.Zed 2>/dev/null \
+      || setsid "$HOME/.local/bin/zed" </dev/null >/dev/null 2>&1 &
+    ;;
   *)
-    echo "usage: focus-app <zen|obsidian|slack>" >&2
+    echo "usage: focus-app <zen|obsidian|slack|zed>" >&2
     exit 1
     ;;
 esac
