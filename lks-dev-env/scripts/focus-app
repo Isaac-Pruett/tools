@@ -10,11 +10,17 @@ case "${1:-}" in
       || setsid env MOZ_ENABLE_WAYLAND=0 GDK_BACKEND=x11 /opt/zen/zen </dev/null >/dev/null 2>&1 &
     ;;
   obsidian)
+    # Prefer deb-installed binary at /usr/bin/obsidian (fast cold start);
+    # fall back to flatpak install if deb isn't there. The old AppImage
+    # symlink path is dead and removed.
     wmctrl -xa obsidian 2>/dev/null \
-      || setsid "$HOME/.local/bin/obsidian" </dev/null >/dev/null 2>&1 &
+      || setsid /usr/bin/obsidian </dev/null >/dev/null 2>&1 \
+      || setsid flatpak run md.obsidian.Obsidian </dev/null >/dev/null 2>&1 &
     ;;
   slack)
+    # Prefer deb at /usr/bin/slack (fast cold start); fall back to snap.
     wmctrl -xa Slack 2>/dev/null \
+      || setsid /usr/bin/slack </dev/null >/dev/null 2>&1 \
       || setsid /snap/bin/slack </dev/null >/dev/null 2>&1 &
     ;;
   zed)
