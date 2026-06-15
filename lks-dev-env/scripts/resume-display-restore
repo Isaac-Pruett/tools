@@ -176,6 +176,23 @@ dbus-monitor --session \
         [[ "$line" == *"boolean false"* ]] && restore_if_externals &
     done &
 
+# Session bus — mutter MonitorsChanged (hotplug, rotation, mode change).
+# Catches the case where you replug a monitor and mutter's saved layout
+# is wrong or missing — we apply our EDID-keyed restore-display-layout 3s
+# after the topology settles. flock dedups bursts of events during a flap
+# so we fire exactly once per settle window, not once per signal.
+dbus-monitor --session \
+    "type='signal',interface='org.gnome.Mutter.DisplayConfig',member='MonitorsChanged'" |
+    while IFS= read -r line; do
+        [[ "$line" == *"member=MonitorsChanged"* ]] || continue
+        (
+            flock -n 9 || exit 0
+            sleep 3
+            logger -t "$LOG_TAG" "MonitorsChanged settled — re-applying layout"
+            "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
+        ) 9>"${XDG_RUNTIME_DIR:-/run/user/$UID}/resume-display-restore-monchanged.lock" &
+    done &
+
 # Watchdog — every 15s, check for outputs with EDID present but no active
 # geometry (DP-MST leaf stuck). The post-unlock flap is oscillating: Samsung
 # can come back via dbus-trigger restore, then drop again seconds later from
