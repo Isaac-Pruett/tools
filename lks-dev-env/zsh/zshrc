@@ -87,15 +87,16 @@ add-zsh-hook precmd _cursor_block_blink
 # ─── Starship prompt ──────────────────────────────────────────────────────────
 command -v starship &>/dev/null && eval "$(starship init zsh)"
 
-# ─── Auto-attach default tmux session ────────────────────────────────────────
-# New terminal windows land in a tmux session with an auto-generated
-# pronounceable name (3–5 chars, alternating consonant/vowel). For specific
-# work run `tx <name>` to switch into a project-defined session from
-# ~/.config/sessions.toml. Run `sp` any time to bring up the fzf session
-# picker. Set NO_TMUX_AUTO=1 to skip and land in plain zsh instead.
+# ─── Opt-in auto-attach to a tmux session ────────────────────────────────────
+# Default: Ctrl+Alt+T lands you in plain zsh. Use `tx <name>` to attach to
+# (or create) a named tmux session for project work; use `sp` for the fzf
+# picker; use `tx` (no arg) to land in an ad-hoc pronounceable session.
+#
+# To restore the old "every fresh terminal auto-attaches a pronounceable
+# session" behavior, export LKS_TMUX_AUTO=1 (e.g. in ~/.zshrc.local).
 if [[ -o interactive ]] \
   && [[ -z "$TMUX" ]] \
-  && [[ -z "$NO_TMUX_AUTO" ]] \
+  && [[ "$LKS_TMUX_AUTO" == "1" ]] \
   && command -v tmux &>/dev/null; then
   _LKS_NAME=$(python3 -c '
 import random
