@@ -1,26 +1,213 @@
-#!/usr/bin/env bash
-# move-to-monitor <1|2|3>  — move the focused window to monitor N (sorted left→right)
-# Requires: xdotool, wmctrl
+#!/usr/bin/env python3
+"""move-to-monitor <slot> — move the focused window to a specific monitor.
 
-TARGET=${1:?Usage: move-to-monitor <1|2|3>}
+Slot can be 1/2/3 (numeric) or a/s/d (letter, matches Super+Alt+A/S/D
+mnemonic in gsettings):
+  1 / a / L → LG ULTRAFINE (vertical, on the left)
+  2 / s / S → Samsung U32J59 (main, center)
+  3 / d / D → Dell built-in BOE panel (laptop screen)
 
-mapfile -t mons < <(
-    xrandr --query | grep ' connected' |
-    grep -oP '\d+x\d+\+\d+\+\d+' |
-    awk -F'[x+]' '{ print $3, $1, $2 }' |
-    sort -n
-)
+Matches each output by its EDID rather than by left-to-right xrandr order.
+Position-based matching breaks the moment ANY monitor in the chain is
+disconnected — the missing one's slot disappears and every subsequent slot
+shifts left by one (so e.g. Super+Alt+S started sending windows to the
+Dell built-in whenever the LG was unplugged). EDID-based matching is
+stable across plug/unplug.
 
-MON="${mons[$((TARGET - 1))]}"
-[[ -z "$MON" ]] && { echo "Monitor $TARGET not found (have ${#mons[@]})"; exit 1; }
+Same EDID patterns as restore-display-layout — the two scripts must stay
+in sync if a panel is swapped out.
 
-read -r ox ow oh <<< "$MON"
+Requires: xrandr, xdotool, wmctrl.
+"""
+import re
+import subprocess
+import sys
+import time
 
-WIN=$(xdotool getactivewindow)
-WIN_HEX=$(printf '0x%x' "$WIN")
+# EDID identifier patterns — same as restore-display-layout. The matcher does
+# a regex search against the EDID's printable strings (vendor name + model +
+# serial), so any unique substring of those works.
+EDID_PATTERNS = {
+    "lg":      r"LG ULTRAFINE|512INSE5G502",
+    "samsung": r"U32J59|HCRY400352",
+    "builtin": r"NV14N4F",         # BOE laptop panel serial
+}
 
-wmctrl -ir "$WIN_HEX" -b remove,maximized_vert,maximized_horz
-sleep 0.1
-xdotool windowmove --sync "$WIN" $((ox + ow / 2 - 100)) $((oh / 2 - 100))
-sleep 0.1
-wmctrl -ir "$WIN_HEX" -b add,maximized_vert,maximized_horz
+# Slot aliases — what the user can pass on the cmdline. Numeric kept for
+# backward compat with gsettings bindings that still use 1/2/3.
+SLOT_MAP = {
+    "1": "lg",      "a": "lg",      "l": "lg",      "L": "lg",
+    "2": "samsung", "s": "samsung", "S": "samsung",
+    "3": "builtin", "d": "builtin", "D": "builtin", "b": "builtin",
+}
+
+
+def decode_edid(hex_lines):
+    """Decode EDID hex blob into printable ascii (just enough to substring-match)."""
+    try:
+        blob = bytes.fromhex("".join(hex_lines))
+    except ValueError:
+        return ""
+    return "".join(chr(b) if 32 <= b < 127 else " " for b in blob)
+
+
+def output_for(brand):
+    """Find xrandr output name whose EDID matches the brand pattern.
+
+    Walks `xrandr --verbose`, accumulating EDID hex per output, then checks
+    each one. Both `connected` and `disconnected` lines flush the previous
+    output's accumulated EDID.
+    """
+    pattern = re.compile(EDID_PATTERNS[brand], re.IGNORECASE)
+    try:
+        out = subprocess.run(
+            ["xrandr", "--verbose"],
+            capture_output=True, text=True, check=True
+        ).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+    matches = []
+    current_name = None
+    capturing = False
+    edid_hex = []
+
+    def flush():
+        nonlocal current_name, edid_hex
+        if current_name and edid_hex:
+            if pattern.search(decode_edid(edid_hex)):
+                matches.append(current_name)
+        current_name = None
+        edid_hex = []
+
+    for line in out.splitlines():
+        # Capture EDIDs from BOTH `connected` and `disconnected` lines.
+        # MST chains (Samsung daisied through LG over DP-Alt-Mode USB-C) often
+        # report the secondary panel as `disconnected` in `xrandr --verbose`
+        # even though it's driving an image — `--listmonitors` is the source
+        # of truth for "is this monitor active". We filter to active outputs
+        # at the end; capturing EDID even for "disconnected" rows is needed
+        # so we have a candidate to filter from.
+        m = re.match(r"^(\S+)\s+(connected|disconnected)", line)
+        if m:
+            flush()
+            current_name = m.group(1)
+            capturing = False
+            continue
+        if "EDID:" in line:
+            capturing = True
+            continue
+        if capturing:
+            m = re.match(r"^\s+([0-9a-fA-F]{32,})\s*$", line)
+            if m:
+                edid_hex.append(m.group(1))
+                continue
+            capturing = False
+    flush()
+
+    # Prefer outputs that are currently active (have a geometry) — disconnected
+    # ones won't be in --listmonitors output.
+    try:
+        active = subprocess.run(
+            ["xrandr", "--listmonitors"],
+            capture_output=True, text=True, check=True
+        ).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        active = ""
+    active_outs = re.findall(r"\s(\S+)\s*$", active, flags=re.M)
+    for m in matches:
+        if m in active_outs:
+            return m
+    return matches[0] if matches else None
+
+
+def geometry_for(output_name):
+    """Return (x, y, w, h) for an output's current mode.
+
+    Tries `xrandr --query` first; falls back to `--listmonitors` for outputs
+    that --query reports as "disconnected" but which are actually driving an
+    image (MST chain sub-outputs do this).
+    """
+    try:
+        out = subprocess.run(
+            ["xrandr", "--query"],
+            capture_output=True, text=True, check=True
+        ).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        out = ""
+    for line in out.splitlines():
+        m = re.match(
+            rf"^{re.escape(output_name)}\s+connected.*?(\d+)x(\d+)\+(\d+)\+(\d+)",
+            line,
+        )
+        if m:
+            w, h, x, y = map(int, m.groups())
+            return (x, y, w, h)
+
+    # Fallback to --listmonitors. Format per line:
+    #   " 1: +DP-1-1-1 2160/697x3840/392+2160+0  DP-1-1-1"
+    try:
+        out = subprocess.run(
+            ["xrandr", "--listmonitors"],
+            capture_output=True, text=True, check=True
+        ).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+    for line in out.splitlines():
+        # Match: name part, then geometry "WxH+X+Y" optionally with /phys-mm
+        m = re.search(
+            rf"\b{re.escape(output_name)}\b\s+(\d+)(?:/\d+)?x(\d+)(?:/\d+)?\+(\d+)\+(\d+)",
+            line,
+        )
+        if m:
+            w, h, x, y = map(int, m.groups())
+            return (x, y, w, h)
+    return None
+
+
+def move_window(x, y, w, h):
+    """Move the focused window into a monitor's center and maximize it."""
+    win = subprocess.run(
+        ["xdotool", "getactivewindow"],
+        capture_output=True, text=True, check=True
+    ).stdout.strip()
+    win_hex = f"0x{int(win):x}"
+    subprocess.run(
+        ["wmctrl", "-ir", win_hex, "-b", "remove,maximized_vert,maximized_horz"],
+        check=False,
+    )
+    time.sleep(0.1)
+    subprocess.run(
+        ["xdotool", "windowmove", "--sync", win,
+         str(x + w // 2 - 100), str(y + h // 2 - 100)],
+        check=True,
+    )
+    time.sleep(0.1)
+    subprocess.run(
+        ["wmctrl", "-ir", win_hex, "-b", "add,maximized_vert,maximized_horz"],
+        check=False,
+    )
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit("Usage: move-to-monitor <1|2|3 | a|s|d>")
+    slot = sys.argv[1]
+    brand = SLOT_MAP.get(slot)
+    if not brand:
+        sys.exit(f"unknown slot '{slot}' — expected 1/2/3 or a/s/d")
+
+    output = output_for(brand)
+    if not output:
+        sys.exit(f"move-to-monitor: {brand} monitor not connected")
+
+    geo = geometry_for(output)
+    if not geo:
+        sys.exit(f"move-to-monitor: {output} ({brand}) has no active geometry")
+
+    x, y, w, h = geo
+    move_window(x, y, w, h)
+
+
+if __name__ == "__main__":
+    main()
