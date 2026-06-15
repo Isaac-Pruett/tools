@@ -26,15 +26,59 @@ set -u
 LOG_TAG="resume-display-restore"
 
 restore_if_externals() {
-    # Bail fast if only the laptop panel is connected — nothing to restore.
-    # `xrandr --listmonitors` first line is "Monitors: N".
+    # Bail fast if NO externals are connected — nothing to restore.
+    # `xrandr --listmonitors` first line is "Monitors: N". We also count
+    # outputs that have EDID present (DP-MST leaf nodes show up there even
+    # when --listmonitors hasn't picked them up yet during a flap).
     n=$(xrandr --listmonitors 2>/dev/null | sed -n 's/Monitors: //p')
-    if [ "${n:-0}" -le 1 ]; then
+    edid_externals=$(xrandr --verbose 2>/dev/null |
+        grep -B1 'EDID:' | grep -cE '^(DP-|HDMI-)')
+    if [ "${n:-0}" -le 1 ] && [ "${edid_externals:-0}" -eq 0 ]; then
         return
     fi
-    # Let DP receivers settle; Samsung's leaf-of-MST takes the longest.
-    sleep 3
+
+    # Let DP receivers settle. Samsung's leaf-of-MST flaps multiple times
+    # during the resume cascade — 3s wasn't enough, we'd fire mid-flap.
+    sleep 5
+
+    # First pass: standard EDID-keyed restore. Brings up anything that's
+    # actually present + negotiated.
     "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
+
+    # Second pass: detect outputs that have an EDID (monitor is physically
+    # there) but no active geometry in --listmonitors (DP receiver stuck).
+    # Cycle each one's port — --off + --auto re-issues a DP hot-plug pulse
+    # which is what Samsung's stuck DP receiver needs to wake up.
+    stuck=$(xrandr --verbose 2>/dev/null | awk '
+        /^[A-Za-z0-9_-]+ (connected|disconnected)/ {
+            flush(); name=$1; has_edid=0
+        }
+        /EDID:/ { has_edid=1 }
+        END { flush() }
+        function flush() {
+            if (name && has_edid) print name
+            name=""; has_edid=0
+        }
+    ' | while read -r out; do
+        # Active outputs already show up in listmonitors; skip those.
+        if ! xrandr --listmonitors 2>/dev/null | grep -q " $out\$"; then
+            echo "$out"
+        fi
+    done)
+
+    if [ -n "$stuck" ]; then
+        logger -t "$LOG_TAG" "stuck outputs (EDID present, no geometry): $stuck — cycling"
+        for out in $stuck; do
+            xrandr --output "$out" --off 2>&1 | logger -t "$LOG_TAG"
+        done
+        sleep 1
+        for out in $stuck; do
+            xrandr --output "$out" --auto 2>&1 | logger -t "$LOG_TAG"
+        done
+        sleep 1
+        # Re-apply layout after revival.
+        "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
+    fi
 }
 
 # System bus — resume from suspend / hibernate
