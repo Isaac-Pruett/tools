@@ -25,6 +25,29 @@ set -u
 
 LOG_TAG="resume-display-restore"
 
+find_stuck_outputs() {
+    # Returns names of outputs with EDID cached but no active mode in
+    # listmonitors. Empty if all healthy.
+    xrandr --verbose 2>/dev/null | awk '
+        /^[A-Za-z0-9_-]+ (connected|disconnected)/ {
+            if (name && has_edid) print name
+            name=$1; has_edid=0
+        }
+        /EDID:/ { has_edid=1 }
+        END { if (name && has_edid) print name }
+    ' | while read -r out; do
+        if ! xrandr --listmonitors 2>/dev/null | grep -qE " ${out}\$"; then
+            echo "$out"
+        fi
+    done
+}
+
+force_kernel_probe() {
+    # Narrow sudoers rule at /etc/sudoers.d/drm-detect allows ONLY this
+    # exact command, NOPASSWD. Re-probes DP-1's MST topology.
+    echo detect | sudo -n /usr/bin/tee /sys/class/drm/card1-DP-1/status >/dev/null 2>&1
+}
+
 log_state() {
     local label=$1
     {
@@ -152,5 +175,40 @@ dbus-monitor --session \
     while IFS= read -r line; do
         [[ "$line" == *"boolean false"* ]] && restore_if_externals &
     done &
+
+# Watchdog — every 15s, check for outputs with EDID present but no active
+# geometry (DP-MST leaf stuck). The post-unlock flap is oscillating: Samsung
+# can come back via dbus-trigger restore, then drop again seconds later from
+# kernel-side renegotiation. The dbus path fires once; the watchdog covers
+# the recurring case.
+#
+# Backoff: after 4 consecutive probes that don't fix it (e.g. Samsung
+# disconnected for real, monitor powered off, cable unplugged), stretch
+# the interval to 60s. Resets immediately when state goes healthy.
+{
+    consecutive_misses=0
+    interval=15
+    while true; do
+        sleep $interval
+        stuck=$(find_stuck_outputs)
+        if [ -n "$stuck" ]; then
+            consecutive_misses=$((consecutive_misses + 1))
+            logger -t "$LOG_TAG" "watchdog: stuck outputs $stuck (miss #$consecutive_misses) — probing"
+            force_kernel_probe
+            sleep 3
+            "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
+            if [ $consecutive_misses -ge 4 ]; then
+                interval=60
+                logger -t "$LOG_TAG" "watchdog: 4+ consecutive misses, backing off to ${interval}s"
+            fi
+        else
+            if [ $consecutive_misses -gt 0 ]; then
+                logger -t "$LOG_TAG" "watchdog: state healthy, reset (was ${consecutive_misses} consecutive misses)"
+            fi
+            consecutive_misses=0
+            interval=15
+        fi
+    done
+} &
 
 wait
