@@ -39,6 +39,7 @@ ln -sf "$REPO/scripts/session-picker"           "$HOME/.local/bin/session-picker
 ln -sf "$REPO/scripts/gst"                      "$HOME/.local/bin/gst"
 ln -sf "$REPO/scripts/focus-app"                "$HOME/.local/bin/focus-app"
 ln -sf "$REPO/scripts/restore-display-layout"   "$HOME/.local/bin/restore-display-layout"
+ln -sf "$REPO/scripts/resume-display-restore"   "$HOME/.local/bin/resume-display-restore"
 ln -sf "$REPO/scripts/sync-to-host"             "$HOME/.local/bin/sync-to-host"
 ln -sf "$REPO/scripts/tx-remote"                "$HOME/.local/bin/tx-remote"
 ln -sf "$REPO/scripts/ctx"                      "$HOME/.local/bin/ctx"
@@ -46,7 +47,7 @@ ln -sf "$REPO/scripts/tx-mk"                    "$HOME/.local/bin/tx-mk"
 ln -sfn "$REPO/lazyvim"                         "$HOME/.config/nvim"
 mkdir -p "$HOME/.config/ghostty"
 ln -sf "$REPO/ghostty/config"                   "$HOME/.config/ghostty/config"
-chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/session-picker" "$HOME/.local/bin/gst" "$HOME/.local/bin/focus-app" "$HOME/.local/bin/restore-display-layout" "$HOME/.local/bin/sync-to-host" "$HOME/.local/bin/tx-remote" "$HOME/.local/bin/ctx" "$HOME/.local/bin/tx-mk"
+chmod +x "$HOME/.local/bin/sessionizer" "$HOME/.local/bin/session-picker" "$HOME/.local/bin/gst" "$HOME/.local/bin/focus-app" "$HOME/.local/bin/restore-display-layout" "$HOME/.local/bin/resume-display-restore" "$HOME/.local/bin/sync-to-host" "$HOME/.local/bin/tx-remote" "$HOME/.local/bin/ctx" "$HOME/.local/bin/tx-mk"
 
 # ─── Seed ~/.config/sessions/ if empty ────────────────────────────────────────
 # Multi-file layout: ~/.config/sessions/<NN>-<scope>.toml. Lower-numbered files

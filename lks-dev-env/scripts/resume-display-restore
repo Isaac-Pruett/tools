@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# resume-display-restore — interrupt-driven daemon that re-runs
+# restore-display-layout after suspend-resume or screen-unlock so the
+# DP-MST chain (Samsung daisied through LG on the Dell dock) reattaches
+# cleanly. Without this, post-resume/unlock the Samsung deterministically
+# fails to wake — the kernel re-enumerates the MST topology in parallel
+# with the NVIDIA module's resume hook, and the Samsung (leaf node, slow
+# DP receiver) loses the race.
+#
+# Costs at rest:
+#   - two dbus-monitor processes blocked on poll() — ~4 MB RAM total,
+#     ZERO CPU until a signal arrives
+#   - on signal arrival, an early-exit guard (xrandr --listmonitors count)
+#     returns immediately when only the laptop panel is connected. The
+#     restore script only runs when there's actually an external display
+#     to restore.
+#
+# Triggers:
+#   - org.freedesktop.login1.Manager.PrepareForSleep(false)  → resume
+#   - org.gnome.ScreenSaver.ActiveChanged(false)             → unlock
+#
+# Run via the systemd user unit at ~/.config/systemd/user/resume-display-restore.service
+
+set -u
+
+LOG_TAG="resume-display-restore"
+
+restore_if_externals() {
+    # Bail fast if only the laptop panel is connected — nothing to restore.
+    # `xrandr --listmonitors` first line is "Monitors: N".
+    n=$(xrandr --listmonitors 2>/dev/null | sed -n 's/Monitors: //p')
+    if [ "${n:-0}" -le 1 ]; then
+        return
+    fi
+    # Let DP receivers settle; Samsung's leaf-of-MST takes the longest.
+    sleep 3
+    "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
+}
+
+# System bus — resume from suspend / hibernate
+dbus-monitor --system \
+    "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" |
+    while IFS= read -r line; do
+        [[ "$line" == *"boolean false"* ]] && restore_if_externals &
+    done &
+
+# Session bus — GNOME ScreenSaver unlock
+dbus-monitor --session \
+    "type='signal',interface='org.gnome.ScreenSaver',member='ActiveChanged'" |
+    while IFS= read -r line; do
+        [[ "$line" == *"boolean false"* ]] && restore_if_externals &
+    done &
+
+wait
