@@ -83,6 +83,13 @@ gsettings set "$SCHEMA:$KB_BASE/custom7/" name    'Move window to monitor 3'
 gsettings set "$SCHEMA:$KB_BASE/custom7/" command "$HOME/.local/bin/move-to-monitor 3"
 gsettings set "$SCHEMA:$KB_BASE/custom7/" binding '<Super><Alt>3'
 
+# Clear dash-to-dock's app-shift-hotkey-{1,2,3} (default: <Shift><Super>{1,2,3}).
+# Those would shadow our focus-monitor bindings below. They're a niche
+# "launch new instance of dock-pinned app N" feature — not worth keeping.
+gsettings set org.gnome.shell.extensions.dash-to-dock app-shift-hotkey-1 "[]" 2>/dev/null || true
+gsettings set org.gnome.shell.extensions.dash-to-dock app-shift-hotkey-2 "[]" 2>/dev/null || true
+gsettings set org.gnome.shell.extensions.dash-to-dock app-shift-hotkey-3 "[]" 2>/dev/null || true
+
 # Mnemonic 1:1 aliases for the same monitor-move action.
 # L=LG (1), S=Samsung (2), D=Dell built-in (3). Same commands as custom5/6/7.
 gsettings set "$SCHEMA:$KB_BASE/mon-l/" name    'Move window to LG (monitor 1)'
@@ -98,6 +105,30 @@ gsettings set "$SCHEMA:$KB_BASE/mon-s/" binding '<Super><Alt>s'
 gsettings set "$SCHEMA:$KB_BASE/mon-d/" name    'Move window to Dell built-in (monitor 3)'
 gsettings set "$SCHEMA:$KB_BASE/mon-d/" command "$HOME/.local/bin/move-to-monitor 3"
 gsettings set "$SCHEMA:$KB_BASE/mon-d/" binding '<Super><Alt>d'
+
+# Super+Shift+<letter|num> → FOCUS the MRU window on the matching monitor.
+# Parallel set to mon-l/s/d above (which MOVE the current window). Walks
+# _NET_CLIENT_LIST_STACKING top→bottom and activates the first window whose
+# center sits in the target monitor's bbox.
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-a/" name    'Focus MRU window on LG (monitor 1)'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-a/" command "$HOME/.local/bin/focus-monitor a"
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-a/" binding '<Super><Shift>a'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-s/" name    'Focus MRU window on Samsung (monitor 2)'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-s/" command "$HOME/.local/bin/focus-monitor s"
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-s/" binding '<Super><Shift>s'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-d/" name    'Focus MRU window on Dell built-in (monitor 3)'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-d/" command "$HOME/.local/bin/focus-monitor d"
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-d/" binding '<Super><Shift>d'
+# Numeric aliases for the same actions (1/2/3 = L/S/D respectively).
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-1/" name    'Focus MRU window on LG (numeric)'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-1/" command "$HOME/.local/bin/focus-monitor 1"
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-1/" binding '<Super><Shift>1'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-2/" name    'Focus MRU window on Samsung (numeric)'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-2/" command "$HOME/.local/bin/focus-monitor 2"
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-2/" binding '<Super><Shift>2'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-3/" name    'Focus MRU window on Dell built-in (numeric)'
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-3/" command "$HOME/.local/bin/focus-monitor 3"
+gsettings set "$SCHEMA:$KB_BASE/focus-mon-3/" binding '<Super><Shift>3'
 
 # focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S
 # Each runs focus-app, which calls `wmctrl -xa <class>` to raise the existing
@@ -137,7 +168,7 @@ dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 # Build the array from the explicit list above. ANY future custom binding must
 # be added to BOTH a new slot block AND this array literal.
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-a/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/', '$KB_BASE/focus-zed/']"
+  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-a/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-mon-a/', '$KB_BASE/focus-mon-s/', '$KB_BASE/focus-mon-d/', '$KB_BASE/focus-mon-1/', '$KB_BASE/focus-mon-2/', '$KB_BASE/focus-mon-3/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/', '$KB_BASE/focus-zed/']"
 
 # Adding NEW custom-keybinding slots (not just editing existing ones) requires
 # gsd-media-keys to re-read its config. It caches the slot list at startup and
