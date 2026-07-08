@@ -27,11 +27,18 @@ import time
 # EDID identifier patterns — same as restore-display-layout. The matcher does
 # a regex search against the EDID's printable strings (vendor name + model +
 # serial), so any unique substring of those works.
+#
+# The "samsung" slot has a fallback: if no Samsung is EDID-matched, it becomes
+# "any single non-builtin external". This makes Super+Alt+S / Super+Shift+S
+# do the sensible thing at home too, where a Gigabyte M27Q or whatever else
+# is the only external. LG has no fallback — that slot is specific to the
+# vertical panel, meaningless without it.
 EDID_PATTERNS = {
     "lg":      r"LG ULTRAFINE|512INSE5G502",
     "samsung": r"U32J59|HCRY400352",
     "builtin": r"NV14N4F",         # BOE laptop panel serial
 }
+FALLBACK_TO_ANY_EXTERNAL = {"samsung"}
 
 # Slot aliases — what the user can pass on the cmdline. Numeric kept for
 # backward compat with gsettings bindings that still use 1/2/3.
@@ -118,6 +125,58 @@ def output_for(brand):
     for m in matches:
         if m in active_outs:
             return m
+    if matches:
+        return matches[0]
+
+    # Fallback: for slots opted into FALLBACK_TO_ANY_EXTERNAL, if no EDID-
+    # specific match was found, return the first active non-builtin output.
+    # Makes the `samsung` slot mean "primary external" — matches Samsung by
+    # EDID when it's plugged, else whatever single external is connected
+    # at home (Gigabyte, LG, HDMI TV, etc.).
+    if brand in FALLBACK_TO_ANY_EXTERNAL:
+        builtin_output = None
+        if "builtin" in EDID_PATTERNS:
+            # Re-scan for the builtin to know which output to exclude.
+            builtin_output = _output_for_uncached("builtin")
+        for line in active.splitlines():
+            m = re.match(r"^\s*\d+:\s*\+\*?(\S+)", line)
+            if not m:
+                continue
+            name = m.group(1)
+            if name and name != builtin_output:
+                return name
+    return None
+
+
+def _output_for_uncached(brand):
+    """Non-fallback lookup — used internally by output_for's fallback path
+    to identify which output is the builtin (so we can exclude it)."""
+    pattern = re.compile(EDID_PATTERNS[brand], re.IGNORECASE)
+    try:
+        out = subprocess.run(
+            ["xrandr", "--verbose"],
+            capture_output=True, text=True, check=True
+        ).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+    current_name, capturing, edid_hex = None, False, []
+    matches = []
+    def flush():
+        nonlocal current_name, edid_hex
+        if current_name and edid_hex and pattern.search(decode_edid(edid_hex)):
+            matches.append(current_name)
+        current_name, edid_hex = None, []
+    for line in out.splitlines():
+        m = re.match(r"^(\S+)\s+(connected|disconnected)", line)
+        if m:
+            flush(); current_name = m.group(1); capturing = False; continue
+        if "EDID:" in line:
+            capturing = True; continue
+        if capturing:
+            mm = re.match(r"^\s+([0-9a-fA-F]{32,})\s*$", line)
+            if mm: edid_hex.append(mm.group(1)); continue
+            capturing = False
+    flush()
     return matches[0] if matches else None
 
 

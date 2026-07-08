@@ -25,6 +25,11 @@ EDID_PATTERNS = {
     "samsung": r"U32J59|HCRY400352",
     "builtin": r"NV14N4F",
 }
+# `samsung` slot falls back to "any single non-builtin external" when the
+# specific Samsung EDID isn't matched — makes Super+Shift+S do the right
+# thing at home too. LG has no fallback; that slot is meaningless without
+# the vertical panel.
+FALLBACK_TO_ANY_EXTERNAL = {"samsung"}
 
 SLOT_MAP = {
     "1": "lg",      "a": "lg",      "l": "lg",      "L": "lg",
@@ -88,6 +93,50 @@ def output_for(brand):
     for m in matches:
         if m in active_outs:
             return m
+    if matches:
+        return matches[0]
+
+    # Fallback for opt-in slots: return the first active non-builtin output
+    # if no EDID-specific match was found. Lets `samsung` mean "primary
+    # external" at home when the specific Samsung isn't plugged.
+    if brand in FALLBACK_TO_ANY_EXTERNAL:
+        builtin_output = _output_for_uncached("builtin") if "builtin" in EDID_PATTERNS else None
+        for line in active.splitlines():
+            m = re.match(r"^\s*\d+:\s*\+\*?(\S+)", line)
+            if not m:
+                continue
+            name = m.group(1)
+            if name and name != builtin_output:
+                return name
+    return None
+
+
+def _output_for_uncached(brand):
+    """Non-fallback lookup used by output_for's fallback to identify the
+    builtin so we can exclude it when picking an arbitrary external."""
+    pattern = re.compile(EDID_PATTERNS[brand], re.IGNORECASE)
+    try:
+        out = _run(["xrandr", "--verbose"])
+    except Exception:
+        return None
+    current_name, capturing, edid_hex = None, False, []
+    matches = []
+    def flush():
+        nonlocal current_name, edid_hex
+        if current_name and edid_hex and pattern.search(_decode_edid(edid_hex)):
+            matches.append(current_name)
+        current_name, edid_hex = None, []
+    for line in out.splitlines():
+        m = re.match(r"^(\S+)\s+(connected|disconnected)", line)
+        if m:
+            flush(); current_name = m.group(1); capturing = False; continue
+        if "EDID:" in line:
+            capturing = True; continue
+        if capturing:
+            mm = re.match(r"^\s+([0-9a-fA-F]{32,})\s*$", line)
+            if mm: edid_hex.append(mm.group(1)); continue
+            capturing = False
+    flush()
     return matches[0] if matches else None
 
 
