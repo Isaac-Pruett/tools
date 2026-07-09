@@ -23,9 +23,38 @@ update all three in lockstep if a panel is swapped out.
 
 Requires: xrandr, xprop, xdotool, wmctrl.
 """
+import os
 import re
 import subprocess
 import sys
+import time
+from pathlib import Path
+
+# Timing-based mode switch for --cycle. If a subsequent invocation lands
+# within RAPID_MS of the previous one, we assume the user is holding the
+# modifier and tapping — cycle to the NEXT window after last activated.
+# Otherwise treat it as a deliberate single press → jump to MRU (skipping
+# the currently-focused window so a repeat isn't a no-op).
+RAPID_MS = 500
+CYCLE_STATE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "focus-monitor-cycle-state"
+
+
+def _read_cycle_state():
+    try:
+        parts = CYCLE_STATE.read_text().strip().split()
+        if len(parts) == 2:
+            return int(parts[0]), int(parts[1], 16)
+    except Exception:
+        pass
+    return 0, 0
+
+
+def _write_cycle_state(win_id):
+    try:
+        CYCLE_STATE.parent.mkdir(parents=True, exist_ok=True)
+        CYCLE_STATE.write_text(f"{int(time.time() * 1000)} 0x{win_id:x}\n")
+    except Exception:
+        pass
 
 EDID_PATTERNS = {
     "lg":      r"LG ULTRAFINE|512INSE5G502",
@@ -341,23 +370,44 @@ def main():
         return True
 
     if cycle:
-        # True N-way cycle: use creation order (stable — focus doesn't
-        # reshuffle it) and jump to the window immediately AFTER the
-        # currently-focused one in the matching list. Wraps at end.
         matching_stable = [w for w in creation_order() if passes_filters(w)]
         if not matching_stable:
             return
-        if focused_win in matching_stable:
-            idx = matching_stable.index(focused_win)
-            activate(matching_stable[(idx + 1) % len(matching_stable)])
-            return
-        # Focused window isn't a match (or nothing focused): pick MRU from
-        # stacking order — the "first press from outside the class" case.
-        for w in reversed(stacking_order()):
-            if passes_filters(w):
-                activate(w)
-                return
-        activate(matching_stable[0])
+
+        # Timing-based mode split:
+        #   Rapid repeat (< RAPID_MS since last activation)  → CYCLE from last
+        #   Single deliberate press                           → MRU (skip focused)
+        prev_ms, prev_win = _read_cycle_state()
+        now_ms = int(time.time() * 1000)
+        rapid = (now_ms - prev_ms) < RAPID_MS
+
+        target = None
+        if rapid and prev_win in matching_stable:
+            # Continue cycling from the window we last activated.
+            idx = matching_stable.index(prev_win)
+            target = matching_stable[(idx + 1) % len(matching_stable)]
+        else:
+            # Single-press MRU: topmost matching in stacking, skipping the
+            # currently-focused window so pressing while already in a ghostty
+            # jumps to the OTHER most-recent one.
+            for w in reversed(stacking_order()):
+                if w == focused_win:
+                    continue
+                if passes_filters(w):
+                    target = w
+                    break
+            # If only the focused window matches (single ghostty), just
+            # activate it — no-op vs current focus, but harmless.
+            if target is None:
+                for w in reversed(stacking_order()):
+                    if passes_filters(w):
+                        target = w
+                        break
+            if target is None:
+                target = matching_stable[0]
+
+        activate(target)
+        _write_cycle_state(target)
         return
 
     # Non-cycle: walk stacking TOP→bottom (MRU) and activate first match.
