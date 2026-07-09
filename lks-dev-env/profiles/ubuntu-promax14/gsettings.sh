@@ -147,10 +147,12 @@ gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" binding '<Control><Super>s'
 gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" name    'Focus MRU ghostty on Dell built-in (monitor 3)'
 gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" command "$HOME/.local/bin/focus-monitor d --class com.mitchellh.ghostty"
 gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" binding '<Control><Super>d'
-# Super+Return → single-key catch-all: focus MRU ghostty anywhere. Uses the
-# 'any' slot which skips the monitor bbox filter.
-gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" name    'Focus MRU ghostty anywhere'
-gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" command "$HOME/.local/bin/focus-monitor any --class com.mitchellh.ghostty"
+# Super+Return → single-key catch-all: cycle to MRU ghostty anywhere.
+# --skip-focused makes repeated presses swap between the two most-recent
+# ghosttys instead of no-op'ing when you're already in one. Third+ ghosttys
+# are reachable via the per-monitor Super+Ctrl+A/S/D bindings.
+gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" name    'Cycle to MRU ghostty anywhere'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" command "$HOME/.local/bin/focus-monitor any --class com.mitchellh.ghostty --skip-focused"
 gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" binding '<Super>Return'
 
 # focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S

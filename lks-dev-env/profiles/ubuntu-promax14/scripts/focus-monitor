@@ -273,8 +273,9 @@ def main():
     if not args:
         sys.exit("Usage: focus-monitor <1|2|3|a|s|d|any> [--class REGEX]")
 
-    # Parse optional --class REGEX.
+    # Parse optional flags.
     class_regex = None
+    skip_focused = False
     positional = []
     i = 0
     while i < len(args):
@@ -282,8 +283,23 @@ def main():
             class_regex = args[i + 1]
             i += 2
             continue
+        if args[i] == "--skip-focused":
+            skip_focused = True
+            i += 1
+            continue
         positional.append(args[i])
         i += 1
+
+    # If --skip-focused, resolve the currently-active window id up front
+    # so we can filter it out of the stacking walk. This gives the "cycle
+    # between two most-recent ghosttys" behavior on repeated presses.
+    focused_win = None
+    if skip_focused:
+        try:
+            out = _run(["xdotool", "getactivewindow"]).strip()
+            focused_win = int(out) if out else None
+        except Exception:
+            focused_win = None
 
     if not positional:
         sys.exit("focus-monitor: missing slot argument")
@@ -306,6 +322,8 @@ def main():
 
     # Walk stacking TOP→bottom; activate the first window that passes filters.
     for win in reversed(stacking_order()):
+        if focused_win is not None and win == focused_win:
+            continue  # cycle mode: skip current, find next MRU match
         if not is_normal_window(win):
             continue
         if bbox is not None:
