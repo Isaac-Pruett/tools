@@ -168,6 +168,14 @@ gsettings set org.gnome.shell.keybindings toggle-quick-settings "[]"
 # Orca can still be toggled via Settings → Accessibility if needed.
 gsettings set org.gnome.settings-daemon.plugins.media-keys screenreader "[]"
 
+# GNOME's wm keybinding `show-desktop` defaults to THREE keys:
+#   <Primary><Super>d  ← same as Ctrl+Super+D, shadows our focus-term-d
+#   <Primary><Alt>d    ← Ctrl+Alt+D, kept as show-desktop entry
+#   <Super>d           ← Super+D alone, kept
+# Strip only the Ctrl+Super+D entry so our focus-term-d fires. show-desktop
+# is still reachable via the other two.
+gsettings set org.gnome.desktop.wm.keybindings show-desktop "['<Primary><Alt>d', '<Super>d']"
+
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" name    'Focus Zen browser'
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" command "$HOME/.local/bin/focus-app zen"
 gsettings set "$SCHEMA:$KB_BASE/focus-zen/" binding '<Super>z'
