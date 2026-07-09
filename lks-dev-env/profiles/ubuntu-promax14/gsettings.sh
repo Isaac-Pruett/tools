@@ -138,21 +138,20 @@ gsettings set "$SCHEMA:$KB_BASE/focus-mon-3/" binding '<Super><Shift>3'
 # Silent no-op when there's no ghostty on the target monitor. Class regex
 # 'com.mitchellh.ghostty' matches every ghostty instance regardless of
 # instance name (see wmctrl -lx).
-gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" name    'Focus MRU ghostty on LG (monitor 1)'
-gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" command "$HOME/.local/bin/focus-monitor a --class com.mitchellh.ghostty"
+# All four bindings use --cycle: first press from outside a ghostty jumps to
+# the MRU one; subsequent presses walk creation-order through ALL matching
+# ghosttys (per-monitor bindings cycle only within that monitor's set).
+gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" name    'Cycle ghostty on LG (monitor 1)'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" command "$HOME/.local/bin/focus-monitor a --class com.mitchellh.ghostty --cycle"
 gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" binding '<Control><Super>a'
-gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" name    'Focus MRU ghostty on Samsung (monitor 2)'
-gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" command "$HOME/.local/bin/focus-monitor s --class com.mitchellh.ghostty"
+gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" name    'Cycle ghostty on Samsung (monitor 2)'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" command "$HOME/.local/bin/focus-monitor s --class com.mitchellh.ghostty --cycle"
 gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" binding '<Control><Super>s'
-gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" name    'Focus MRU ghostty on Dell built-in (monitor 3)'
-gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" command "$HOME/.local/bin/focus-monitor d --class com.mitchellh.ghostty"
+gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" name    'Cycle ghostty on Dell built-in (monitor 3)'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" command "$HOME/.local/bin/focus-monitor d --class com.mitchellh.ghostty --cycle"
 gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" binding '<Control><Super>d'
-# Super+Return → single-key catch-all: cycle to MRU ghostty anywhere.
-# --skip-focused makes repeated presses swap between the two most-recent
-# ghosttys instead of no-op'ing when you're already in one. Third+ ghosttys
-# are reachable via the per-monitor Super+Ctrl+A/S/D bindings.
-gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" name    'Cycle to MRU ghostty anywhere'
-gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" command "$HOME/.local/bin/focus-monitor any --class com.mitchellh.ghostty --skip-focused"
+gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" name    'Cycle ghostty anywhere'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" command "$HOME/.local/bin/focus-monitor any --class com.mitchellh.ghostty --cycle"
 gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" binding '<Super>Return'
 
 # focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S
