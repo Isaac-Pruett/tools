@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
-"""focus-monitor <slot> — activate the most-recently-used window on a monitor.
+"""focus-monitor <slot> [--class REGEX] — activate the most-recently-used window.
 
 Slot mirrors move-to-monitor: 1/2/3 numeric or a/s/d letter:
   1 / a / L → LG ULTRAFINE     (left, vertical)
   2 / s / S → Samsung U32J59x  (center, main)
   3 / d / D → Dell built-in    (laptop panel)
+  any / *   → skip monitor filter — find MRU window anywhere (used with --class)
+
+Optional `--class REGEX` filters the stacking list to windows whose WM_CLASS
+matches. Combined with a monitor slot: "MRU window of THIS class on THIS
+monitor". Combined with `any`: "MRU window of THIS class anywhere". Powers
+the Super+Ctrl+A/S/D terminal-focus bindings and Super+Return
+(MRU-ghostty-anywhere).
 
 Uses the X11 `_NET_CLIENT_LIST_STACKING` property: window IDs in z-order
 bottom→top. Mutter raises a window to the TOP of this list on every focus,
 so the topmost window inside a monitor's bbox IS the most-recently-used
-window on that monitor. Falls back silently if no window is found there.
+window on that monitor. Silent no-op if no window matches.
 
 EDID identifier patterns mirror move-to-monitor / restore-display-layout —
 update all three in lockstep if a panel is swapped out.
@@ -35,6 +42,8 @@ SLOT_MAP = {
     "1": "lg",      "a": "lg",      "l": "lg",      "L": "lg",
     "2": "samsung", "s": "samsung", "S": "samsung",
     "3": "builtin", "d": "builtin", "D": "builtin", "b": "builtin",
+    # Special: any monitor — used with --class for "MRU app-window anywhere".
+    "any": None, "*": None,
 }
 
 
@@ -243,30 +252,72 @@ def activate(win_id):
     subprocess.run(["wmctrl", "-i", "-a", f"0x{win_id:x}"], check=False)
 
 
+def window_class(win_id):
+    """Return the WM_CLASS string for filtering. Format from xprop:
+       WM_CLASS(STRING) = "instance", "class"
+    We concatenate both so a regex can match either."""
+    try:
+        out = _run(["xprop", "-id", str(win_id), "WM_CLASS"])
+    except Exception:
+        return ""
+    # Extract quoted parts after the = sign.
+    m = re.search(r'=\s*(.+)$', out)
+    if not m:
+        return ""
+    # Strip quotes + join the instance/class tokens.
+    return re.sub(r'[",]', ' ', m.group(1))
+
+
 def main():
-    if len(sys.argv) < 2:
-        sys.exit("Usage: focus-monitor <1|2|3 | a|s|d>")
-    brand = SLOT_MAP.get(sys.argv[1])
-    if not brand:
-        sys.exit(f"unknown slot '{sys.argv[1]}'")
+    args = sys.argv[1:]
+    if not args:
+        sys.exit("Usage: focus-monitor <1|2|3|a|s|d|any> [--class REGEX]")
 
-    output = output_for(brand)
-    if not output:
-        sys.exit(f"focus-monitor: {brand} monitor not connected")
-    bbox = monitor_bbox(output)
-    if not bbox:
-        sys.exit(f"focus-monitor: {output} ({brand}) has no geometry")
+    # Parse optional --class REGEX.
+    class_regex = None
+    positional = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--class" and i + 1 < len(args):
+            class_regex = args[i + 1]
+            i += 2
+            continue
+        positional.append(args[i])
+        i += 1
 
-    # Walk stacking TOP→bottom; first window whose center sits in the monitor's
-    # bbox is the MRU window on that monitor.
+    if not positional:
+        sys.exit("focus-monitor: missing slot argument")
+    slot = positional[0]
+    if slot not in SLOT_MAP:
+        sys.exit(f"unknown slot '{slot}'")
+    brand = SLOT_MAP[slot]  # None for "any" / "*"
+
+    class_pattern = re.compile(class_regex, re.IGNORECASE) if class_regex else None
+
+    # Resolve monitor bbox unless slot is "any".
+    bbox = None
+    if brand is not None:
+        output = output_for(brand)
+        if not output:
+            sys.exit(f"focus-monitor: {brand} monitor not connected")
+        bbox = monitor_bbox(output)
+        if not bbox:
+            sys.exit(f"focus-monitor: {output} ({brand}) has no geometry")
+
+    # Walk stacking TOP→bottom; activate the first window that passes filters.
     for win in reversed(stacking_order()):
         if not is_normal_window(win):
             continue
-        geo = window_geometry(win)
-        if center_in_bbox(geo, bbox):
-            activate(win)
-            return
-    # No window on that monitor — nothing to do.
+        if bbox is not None:
+            geo = window_geometry(win)
+            if not center_in_bbox(geo, bbox):
+                continue
+        if class_pattern is not None:
+            if not class_pattern.search(window_class(win)):
+                continue
+        activate(win)
+        return
+    # No matching window — silent no-op.
 
 
 if __name__ == "__main__":

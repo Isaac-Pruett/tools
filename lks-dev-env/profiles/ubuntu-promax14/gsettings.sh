@@ -130,6 +130,29 @@ gsettings set "$SCHEMA:$KB_BASE/focus-mon-3/" name    'Focus MRU window on Dell 
 gsettings set "$SCHEMA:$KB_BASE/focus-mon-3/" command "$HOME/.local/bin/focus-monitor 3"
 gsettings set "$SCHEMA:$KB_BASE/focus-mon-3/" binding '<Super><Shift>3'
 
+# Super+Ctrl+<letter> → FOCUS the MRU TERMINAL (ghostty) on the matching
+# monitor. Completes the modifier ladder:
+#   Super+Alt+X    = move to monitor X
+#   Super+Shift+X  = focus MRU any-window on monitor X
+#   Super+Ctrl+X   = focus MRU ghostty on monitor X   ← this block
+# Silent no-op when there's no ghostty on the target monitor. Class regex
+# 'com.mitchellh.ghostty' matches every ghostty instance regardless of
+# instance name (see wmctrl -lx).
+gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" name    'Focus MRU ghostty on LG (monitor 1)'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" command "$HOME/.local/bin/focus-monitor a --class com.mitchellh.ghostty"
+gsettings set "$SCHEMA:$KB_BASE/focus-term-a/" binding '<Control><Super>a'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" name    'Focus MRU ghostty on Samsung (monitor 2)'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" command "$HOME/.local/bin/focus-monitor s --class com.mitchellh.ghostty"
+gsettings set "$SCHEMA:$KB_BASE/focus-term-s/" binding '<Control><Super>s'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" name    'Focus MRU ghostty on Dell built-in (monitor 3)'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" command "$HOME/.local/bin/focus-monitor d --class com.mitchellh.ghostty"
+gsettings set "$SCHEMA:$KB_BASE/focus-term-d/" binding '<Control><Super>d'
+# Super+Return → single-key catch-all: focus MRU ghostty anywhere. Uses the
+# 'any' slot which skips the monitor bbox filter.
+gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" name    'Focus MRU ghostty anywhere'
+gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" command "$HOME/.local/bin/focus-monitor any --class com.mitchellh.ghostty"
+gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" binding '<Super>Return'
+
 # focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S
 # Each runs focus-app, which calls `wmctrl -xa <class>` to raise the existing
 # window; if no window exists, it launches the app fresh.
@@ -172,7 +195,7 @@ dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 # Build the array from the explicit list above. ANY future custom binding must
 # be added to BOTH a new slot block AND this array literal.
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-a/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-mon-a/', '$KB_BASE/focus-mon-s/', '$KB_BASE/focus-mon-d/', '$KB_BASE/focus-mon-1/', '$KB_BASE/focus-mon-2/', '$KB_BASE/focus-mon-3/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-zen-b/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/', '$KB_BASE/focus-zed/']"
+  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-a/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-mon-a/', '$KB_BASE/focus-mon-s/', '$KB_BASE/focus-mon-d/', '$KB_BASE/focus-mon-1/', '$KB_BASE/focus-mon-2/', '$KB_BASE/focus-mon-3/', '$KB_BASE/focus-term-a/', '$KB_BASE/focus-term-s/', '$KB_BASE/focus-term-d/', '$KB_BASE/focus-term-any/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-zen-b/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/', '$KB_BASE/focus-zed/']"
 
 # Adding NEW custom-keybinding slots (not just editing existing ones) requires
 # gsd-media-keys to re-read its config. It caches the slot list at startup and
