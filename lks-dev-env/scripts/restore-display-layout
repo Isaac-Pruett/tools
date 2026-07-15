@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# restore-display-layout — apply the canonical 3-monitor layout via xrandr,
-# matching outputs by EDID rather than connector name.
+# restore-display-layout — apply the canonical 3-monitor layout via xrandr.
+# Fast path uses the current stable connector names; EDID matching is fallback only.
 #
 # Why this exists: GNOME's monitors.xml keys saved layouts on connector name.
 # The Samsung's DP cable sometimes enumerates as DP-1, sometimes as DP-1-1-1
@@ -10,77 +10,133 @@
 # matching on the panel's EDID name (vendor + model).
 #
 # Run on demand: `restore-display-layout`
-# Autostarted: ~/.config/autostart/restore-display-layout.desktop
+# Startup/resume path: resume-display-restore.service calls this after display settle
 
 set -e
 
 # Wait briefly so all outputs are enumerated after login / hotplug.
 sleep 1
 
-# Find xrandr output name whose EDID contains the given regex pattern.
-# Uses `xrandr --verbose` which interleaves the connector name + EDID hex,
-# avoiding the DRM↔xrandr name divergence on MST connectors (DRM exposes
-# flat names like card1-DP-8; xrandr exposes hierarchical DP-1-1-1).
-find_output() {
-  local pattern=$1
-  python3 - "$pattern" <<'PY'
-import re, subprocess, sys
-pattern = re.compile(sys.argv[1])
+# Current known connector names for the stable Dell dock + LG + Samsung
+# topology. This fast path avoids EDID/DDC probes during normal service
+# restarts. If MST connector names change, we fall back to one EDID scan.
+DEFAULT_LG_OUTPUT=${RESTORE_LAYOUT_LG_OUTPUT:-DP-1-3-3}
+DEFAULT_SAMSUNG_OUTPUT=${RESTORE_LAYOUT_SAMSUNG_OUTPUT:-DP-2}
+DEFAULT_BUILTIN_OUTPUT=${RESTORE_LAYOUT_BUILTIN_OUTPUT:-eDP-1}
+
+# Apply layout. Coords match the current physical layout:
+#   LG vertical:      (0,0)       3840x2160 rotated left  -> 2160x3840
+#   Samsung vertical: (2160,0)    3840x2160 rotated right -> 2160x3840
+#   Built-in:         (4320,960)  1920x1200 @ 60Hz, primary
+#
+# Use one xrandr invocation so GNOME sees one final topology instead of a
+# sequence of intermediate layouts that can move windows while outputs resize.
+apply_layout() {
+  local lg=$1 samsung=$2 builtin=$3
+  local cmd
+
+  # Never apply external 4K modes to the internal panel during partial MST
+  # enumeration. If EDID fallback sees stale/misattributed data, fail closed
+  # and wait for the next MonitorsChanged event instead.
+  case "$lg" in
+    eDP-* ) echo "-> ignoring LG candidate on internal output: $lg"; lg= ;;
+  esac
+  case "$samsung" in
+    eDP-* ) echo "-> ignoring Samsung candidate on internal output: $samsung"; samsung= ;;
+  esac
+  case "$builtin" in
+    ""|eDP-* ) ;;
+    * ) echo "-> ignoring built-in candidate on external output: $builtin"; builtin= ;;
+  esac
+
+  echo "detected outputs:"
+  echo "  vertical (LG):  ${lg:-(missing)}"
+  echo "  vertical (Samsung): ${samsung:-(missing)}"
+  echo "  built-in:       ${builtin:-(missing)}"
+
+  cmd=(xrandr)
+  if [ -n "$lg" ]; then
+    cmd+=(--output "$lg" --mode 3840x2160 --rate 60 --pos 0x0 --rotate left)
+  fi
+  if [ -n "$samsung" ]; then
+    cmd+=(--output "$samsung" --mode 3840x2160 --rate 60 --pos 2160x0 --rotate right)
+  fi
+  if [ -n "$builtin" ]; then
+    cmd+=(--output "$builtin" --mode 1920x1200 --rate 60 --pos 4320x960 --rotate normal --primary)
+  fi
+
+  if [ ${#cmd[@]} -le 1 ]; then
+    echo "-> no known outputs found"
+    return 1
+  fi
+
+  if "${cmd[@]}"; then
+    echo "-> layout applied"
+    return 0
+  fi
+
+  echo "-> layout apply failed"
+  return 1
+}
+
+find_outputs_by_edid() {
+  python3 - <<'PY'
+import re, subprocess
+patterns = {
+    'lg': re.compile(r'LG ULTRAFINE|512INSE5G502'),
+    'samsung': re.compile(r'U32J59|HCRY400352'),
+    'builtin': re.compile(r'NV14N4F'),
+}
+found = {key: '' for key in patterns}
 out = subprocess.check_output(['xrandr', '--verbose'], text=True)
 
 def decode_edid(hex_lines):
     try:
-        b = bytes.fromhex(''.join(hex_lines))
+        data = bytes.fromhex(''.join(hex_lines))
     except ValueError:
         return ''
-    return ''.join(chr(c) for c in b if 32 <= c < 127)
+    return ''.join(chr(c) for c in data if 32 <= c < 127)
 
-# Any top-level output line (connected OR disconnected) is a transition. We
-# flush the previous output's accumulated EDID first, then start fresh state
-# for the new output. Disconnected outputs simply have no EDID to collect.
 current_name, capturing, edid_hex = None, False, []
 output_re = re.compile(r'^(\S+) (?:connected|disconnected)\b')
 
 def flush():
-    if current_name and edid_hex:
-        text = decode_edid(edid_hex)
-        if pattern.search(text):
-            print(current_name); sys.exit(0)
+    global current_name, edid_hex
+    if not current_name or not edid_hex:
+        return
+    text = decode_edid(edid_hex)
+    for key, pattern in patterns.items():
+        if not found[key] and pattern.search(text):
+            found[key] = current_name
 
 for line in out.splitlines():
-    m = output_re.match(line)
-    if m:
+    match = output_re.match(line)
+    if match:
         flush()
-        current_name = m.group(1) if 'connected' in line and 'disconnected' not in line else None
-        capturing = False; edid_hex = []
+        current_name = match.group(1) if 'connected' in line and 'disconnected' not in line else None
+        capturing = False
+        edid_hex = []
         continue
     if 'EDID:' in line:
-        capturing = True; continue
+        capturing = True
+        continue
     if capturing:
-        m2 = re.match(r'^\s+([0-9a-fA-F]+)\s*$', line)
-        if m2 and len(m2.group(1)) >= 16:
-            edid_hex.append(m2.group(1))
+        match = re.match(r'^\s+([0-9a-fA-F]+)\s*$', line)
+        if match and len(match.group(1)) >= 16:
+            edid_hex.append(match.group(1))
         else:
             capturing = False
 flush()
+print(found['lg'], found['samsung'], found['builtin'], sep='\t')
 PY
 }
 
-lg=$(find_output "LG ULTRAFINE|512INSE5G502")
-samsung=$(find_output "U32J59|HCRY400352")
-builtin=$(find_output "NV14N4F")  # BOE panel serial from EDID
+if [ "${RESTORE_DISPLAY_LAYOUT_FORCE_EDID:-0}" != 1 ]; then
+  if apply_layout "$DEFAULT_LG_OUTPUT" "$DEFAULT_SAMSUNG_OUTPUT" "$DEFAULT_BUILTIN_OUTPUT"; then
+    exit 0
+  fi
+  echo "-> fast connector-name path failed, falling back to one EDID scan"
+fi
 
-echo "detected outputs:"
-echo "  vertical (LG):  ${lg:-(missing)}"
-echo "  main (Samsung): ${samsung:-(missing)}"
-echo "  built-in:       ${builtin:-(missing)}"
-
-# Apply layout. Coords match the layout we want:
-#   LG vertical:  (0,0)        3840x2160 rotated left → renders as 2160x3840
-#   Samsung main: (2160, 683)  3840x2160 @ 60Hz
-#   Built-in:     (6000, 1643) 1920x1200 @ 60Hz, primary
-[ -n "$lg" ]      && xrandr --output "$lg"      --mode 3840x2160 --rate 60 --pos 0x0    --rotate left
-[ -n "$samsung" ] && xrandr --output "$samsung" --mode 3840x2160 --rate 60 --pos 2160x683
-[ -n "$builtin" ] && xrandr --output "$builtin" --mode 1920x1200 --rate 60 --pos 6000x1643 --primary
-
-echo "→ layout applied"
+IFS=$'\t' read -r lg samsung builtin < <(find_outputs_by_edid)
+apply_layout "$lg" "$samsung" "$builtin"

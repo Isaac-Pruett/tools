@@ -8,22 +8,430 @@
 # DP receiver) loses the race.
 #
 # Costs at rest:
-#   - two dbus-monitor processes blocked on poll() — ~4 MB RAM total,
-#     ZERO CPU until a signal arrives
-#   - on signal arrival, an early-exit guard (xrandr --listmonitors count)
-#     returns immediately when only the laptop panel is connected. The
-#     restore script only runs when there's actually an external display
-#     to restore.
+#   - three dbus-monitor processes blocked on poll()
+#   - one low-frequency window snapshot loop that reads X window/root
+#     geometry only; it does not call xrandr or probe EDID/DDC.
 #
 # Triggers:
-#   - org.freedesktop.login1.Manager.PrepareForSleep(false)  → resume
-#   - org.gnome.ScreenSaver.ActiveChanged(false)             → unlock
+#   - org.freedesktop.login1.Manager.PrepareForSleep(true)   -> snapshot before sleep
+#   - org.freedesktop.login1.Manager.PrepareForSleep(false)  -> restore after resume
+#   - org.gnome.ScreenSaver.ActiveChanged(true)              -> snapshot on lock
+#   - org.gnome.ScreenSaver.ActiveChanged(false)             -> restore on unlock
+#   - org.gnome.Mutter.DisplayConfig.MonitorsChanged         -> restore after hotplug/reconfigure
 #
 # Run via the systemd user unit at ~/.config/systemd/user/resume-display-restore.service
 
 set -u
 
 LOG_TAG="resume-display-restore"
+# Per-topology snapshot files, keyed by monitor-count fingerprint (1mon/2mon/3mon).
+# Only three files ever exist under this base; each save is an atomic mv-replace
+# of its own file, so 1-monitor state can't clobber the 3-monitor snapshot the
+# way a single-file design did. Future extension (distinguishing LG-only from
+# Samsung-only at the 2mon topology) is a change to topology_fingerprint() —
+# no schema change.
+WINDOW_SNAPSHOT_BASE="${XDG_RUNTIME_DIR:-/run/user/$UID}/resume-display-window-layout"
+WINDOW_SNAPSHOT_LOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/resume-display-window-layout.lock"
+SNAPSHOT_PAUSE_FILE="${XDG_RUNTIME_DIR:-/run/user/$UID}/resume-display-window-snapshot-paused-until"
+SNAPSHOT_PAUSE_SECONDS=90
+SNAPSHOT_INTERVAL_SECONDS=30
+DISPLAY_STATE_FILE="${XDG_RUNTIME_DIR:-/run/user/$UID}/resume-display-state-before-lock"
+DISPLAY_DIRTY_FILE="${XDG_RUNTIME_DIR:-/run/user/$UID}/resume-display-state-dirty"
+
+window_is_restorable() {
+    local win=$1 type
+    type=$(xprop -id "$win" _NET_WM_WINDOW_TYPE 2>/dev/null || true)
+    [[ "$type" == *"_NET_WM_WINDOW_TYPE_DESKTOP"* ]] && return 1
+    [[ "$type" == *"_NET_WM_WINDOW_TYPE_DOCK"* ]] && return 1
+    return 0
+}
+
+window_states() {
+    local win=$1 state maxv=0 maxh=0
+    state=$(xprop -id "$win" _NET_WM_STATE 2>/dev/null || true)
+    [[ "$state" == *"_NET_WM_STATE_MAXIMIZED_VERT"* ]] && maxv=1
+    [[ "$state" == *"_NET_WM_STATE_MAXIMIZED_HORZ"* ]] && maxh=1
+    printf '%s	%s' "$maxv" "$maxh"
+}
+
+normalize_window_id() {
+    local win=${1%,}
+    case "$win" in
+        0x*|0X*) printf '0x%08x' "$((win))" ;;
+        *) printf '%s' "$win" ;;
+    esac
+}
+
+active_window_id() {
+    local win
+    win=$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}')
+    [ -n "$win" ] && normalize_window_id "$win"
+}
+
+stacking_list() {
+    xprop -root _NET_CLIENT_LIST_STACKING 2>/dev/null | sed -n 's/.*# //p'
+}
+
+stack_index_for_window() {
+    local win=$1 stack=$2 target item idx=0
+    target=$(normalize_window_id "$win")
+    for item in $stack; do
+        item=${item%,}
+        [ -n "$item" ] || continue
+        if [ "$(normalize_window_id "$item")" = "$target" ]; then
+            printf '%s' "$idx"
+            return
+        fi
+        idx=$((idx + 1))
+    done
+    printf '%s' -1
+}
+
+pause_snapshots_for() {
+    local seconds=${1:-$SNAPSHOT_PAUSE_SECONDS}
+    printf '%s
+' "$(($(date +%s) + seconds))" > "$SNAPSHOT_PAUSE_FILE"
+}
+
+snapshots_are_paused() {
+    local paused_until now
+    [ -r "$SNAPSHOT_PAUSE_FILE" ] || return 1
+    read -r paused_until < "$SNAPSHOT_PAUSE_FILE" || return 1
+    now=$(date +%s)
+    [ "${paused_until:-0}" -gt "$now" ] 2>/dev/null
+}
+
+root_screen_size() {
+    xwininfo -root 2>/dev/null | awk '
+        /Width:/ { w=$2 }
+        /Height:/ { h=$2 }
+        END { if (w && h) print w, h }
+    '
+}
+
+root_screen_geometry() {
+    local w h
+    read -r w h <<< "$(root_screen_size)"
+    [ -n "${w:-}" ] && [ -n "${h:-}" ] || return 1
+    printf '%sx%s+0+0\n' "$w" "$h"
+}
+
+display_signature() {
+    # Avoid xrandr in the lock/unlock fast path. Mutter's MonitorsChanged
+    # signal marks the display dirty when topology really changes; this root
+    # geometry signature is only used to skip restores after brief locks where
+    # GNOME has already preserved window state.
+    root_screen_geometry
+}
+
+save_display_state() {
+    display_signature > "$DISPLAY_STATE_FILE"
+    rm -f "$DISPLAY_DIRTY_FILE"
+}
+
+mark_display_dirty() {
+    : > "$DISPLAY_DIRTY_FILE"
+    pause_snapshots_for "$SNAPSHOT_PAUSE_SECONDS"
+}
+
+display_state_unchanged() {
+    local before now
+    [ ! -e "$DISPLAY_DIRTY_FILE" ] || return 1
+    [ -s "$DISPLAY_STATE_FILE" ] || return 1
+    before=$(cat "$DISPLAY_STATE_FILE")
+    now=$(display_signature)
+    [ "$before" = "$now" ]
+}
+
+
+screensaver_is_active() {
+    local active
+    active=$(gdbus call --session \
+        --dest org.gnome.ScreenSaver \
+        --object-path /org/gnome/ScreenSaver \
+        --method org.gnome.ScreenSaver.GetActive 2>/dev/null || true)
+    [[ "$active" == *"true"* ]]
+}
+
+active_monitor_count() {
+    local w h
+    read -r w h <<< "$(root_screen_size)"
+    [ -n "${w:-}" ] && [ -n "${h:-}" ] || { printf '0\n'; return; }
+
+    if (( w >= 6240 && h >= 3840 )); then
+        printf '3\n'
+    elif (( w >= 4320 && h >= 3840 )); then
+        printf '2\n'
+    else
+        printf '1\n'
+    fi
+}
+
+active_monitor_names() {
+    local n
+    n=$(active_monitor_count)
+    if (( n >= 1 )); then
+        printf 'builtin\neDP-1\n'
+    fi
+    if (( n >= 2 )); then
+        printf 'LG\nSamsung\nDP-1-3-3\nDP-2\n'
+    fi
+}
+
+topology_fingerprint() {
+    local n
+    n=$(active_monitor_count)
+    case "$n" in
+        1) printf '1mon' ;;
+        2) printf '2mon' ;;
+        3) printf '3mon' ;;
+        *) printf 'unknown' ;;
+    esac
+}
+
+current_snapshot_path() {
+    printf '%s-%s.tsv' "$WINDOW_SNAPSHOT_BASE" "$(topology_fingerprint)"
+}
+
+connected_monitor_geometries() {
+    local w h
+    read -r w h <<< "$(root_screen_size)"
+    [ -n "${w:-}" ] && [ -n "${h:-}" ] || return 1
+
+    if (( w >= 6240 && h >= 3840 )); then
+        printf 'LG 2160x3840+0+0\n'
+        printf 'Samsung 2160x3840+2160+0\n'
+        printf 'builtin 1920x1200+4320+960\n'
+    elif (( w >= 4320 && h >= 3840 )); then
+        printf 'LG 2160x3840+0+0\n'
+        printf 'Samsung 2160x3840+2160+0\n'
+    else
+        printf 'builtin %sx%s+0+0\n' "$w" "$h"
+    fi
+}
+
+monitor_in_list() {
+    local monitor=$1 monitors=$2
+    grep -qx -- "$monitor" <<< "$monitors"
+}
+
+monitor_for_window() {
+    local wx=$1 wy=$2 ww=$3 wh=$4 monitors=${5:-}
+    local cx=$((wx + ww / 2)) cy=$((wy + wh / 2))
+    local out geom mw mh mx my
+
+    [ -n "$monitors" ] || monitors=$(connected_monitor_geometries)
+    while read -r out geom; do
+        [[ "$geom" =~ ^([0-9]+)x([0-9]+)([-+][0-9]+)([-+][0-9]+)$ ]] || continue
+        mw=${BASH_REMATCH[1]}
+        mh=${BASH_REMATCH[2]}
+        mx=${BASH_REMATCH[3]}
+        my=${BASH_REMATCH[4]}
+        if (( cx >= mx && cx < mx + mw && cy >= my && cy < my + mh )); then
+            printf '%s' "$out"
+            return
+        fi
+    done <<< "$monitors"
+
+    printf 'unknown'
+}
+
+
+window_geometry() {
+    local win=$1 line x= y= w= h=
+    while IFS= read -r line; do
+        case "$line" in
+            *"Absolute upper-left X:"*) x=${line##*: } ;;
+            *"Absolute upper-left Y:"*) y=${line##*: } ;;
+            *"Width:"*) w=${line##*: } ;;
+            *"Height:"*) h=${line##*: } ;;
+        esac
+    done < <(xwininfo -id "$win" 2>/dev/null)
+
+    [ -n "$x" ] && [ -n "$y" ] && [ -n "$w" ] && [ -n "$h" ] || return 1
+    printf '%s %s %s %s' "$x" "$y" "$w" "$h"
+}
+
+save_window_layout() {
+    local label=${1:-snapshot}
+    local quiet=${2:-}
+    local fp snapshot_path
+    fp=$(topology_fingerprint)
+    if [ "$fp" = unknown ]; then
+        [ "$quiet" = quiet ] || logger -t "$LOG_TAG" "save_window_layout ($label) skipped: topology fingerprint unknown"
+        return
+    fi
+    snapshot_path=$(current_snapshot_path)
+    (
+        flock -n 9 || exit 0
+        local tmp="${snapshot_path}.tmp" count=0 skipped_unknown=0 monitor geom x y w h maxv maxh stack active stack_index is_active monitors
+        stack=$(stacking_list)
+        active=$(active_window_id)
+        monitors=$(connected_monitor_geometries)
+        if [ "$label" = lock ] && screensaver_is_active; then
+            logger -t "$LOG_TAG" "lock snapshot skipped: screen already locked, preserving previous window layout"
+            exit 0
+        fi
+        : > "$tmp"
+        while read -r win desk pid _wx _wy _ww _wh _title; do
+            [ -n "$win" ] || continue
+            window_is_restorable "$win" || continue
+            geom=$(window_geometry "$win") || { skipped_unknown=$((skipped_unknown + 1)); continue; }
+            read -r x y w h <<< "$geom"
+            monitor=$(monitor_for_window "$x" "$y" "$w" "$h" "$monitors")
+            if [ "$monitor" = unknown ]; then
+                skipped_unknown=$((skipped_unknown + 1))
+                continue
+            fi
+            read -r maxv maxh <<< "$(window_states "$win")"
+            stack_index=$(stack_index_for_window "$win" "$stack")
+            is_active=0
+            if [ "$(normalize_window_id "$win")" = "$active" ]; then
+                is_active=1
+            fi
+            printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s
+'                 "$win" "$desk" "$pid" "$monitor" "$x" "$y" "$w" "$h" "$maxv" "$maxh" "$stack_index" "$is_active" >> "$tmp"
+            count=$((count + 1))
+        done < <(wmctrl -lpG 2>/dev/null)
+        if [ "$count" -gt 0 ]; then
+            mv "$tmp" "$snapshot_path"
+            [ "$quiet" = quiet ] || logger -t "$LOG_TAG" "saved window layout ($label, $fp): $count windows, $skipped_unknown unknown-monitor skipped"
+        else
+            rm -f "$tmp"
+            [ "$quiet" = quiet ] || logger -t "$LOG_TAG" "window layout snapshot ($label, $fp) skipped: no restorable windows, previous snapshot preserved"
+        fi
+    ) 9>"$WINDOW_SNAPSHOT_LOCK"
+}
+
+snapshot_if_unlocked() {
+    snapshots_are_paused && return
+    screensaver_is_active && return
+    # No monitor-count guard: with per-topology snapshots each fingerprint has
+    # its own file, so capturing the 1-monitor state is safe — it goes to
+    # snapshot-1mon.tsv, not the 3mon/2mon files.
+    save_window_layout "steady" quiet
+}
+
+
+restore_window_layout() {
+    local fp snapshot_path
+    fp=$(topology_fingerprint)
+    if [ "$fp" = unknown ]; then
+        logger -t "$LOG_TAG" "window layout restore skipped: topology fingerprint unknown"
+        return
+    fi
+    snapshot_path=$(current_snapshot_path)
+    [ -s "$snapshot_path" ] || {
+        logger -t "$LOG_TAG" "window layout restore skipped: no snapshot for topology $fp"
+        return
+    }
+
+    (
+        flock -n 9 || exit 0
+        local win desk pid monitor x y w h maxv maxh stack_index is_active curpid restored=0 gone=0 skipped=0 restack active_restore rwin active_monitors
+        # Wait for every monitor referenced in the snapshot to be present.
+        # MST re-enumeration is async: MonitorsChanged can fire while only one
+        # output has come up. Without this wait, windows whose target monitor
+        # hasn't reappeared yet get skipped, and GNOME then herds them onto
+        # whatever single output IS live — the "everything ends up on LG"
+        # symptom the user hits after longer meetings.
+        local wanted_monitors elapsed=0 missing
+        wanted_monitors=$(awk -F'	' 'NF && $4 != "unknown" {print $4}' "$snapshot_path" | sort -u)
+        while [ $elapsed -lt 30 ]; do
+            active_monitors=$(active_monitor_names)
+            missing=""
+            while IFS= read -r m; do
+                [ -n "$m" ] || continue
+                if ! grep -qx -- "$m" <<< "$active_monitors"; then
+                    missing="$missing $m"
+                fi
+            done <<< "$wanted_monitors"
+            [ -z "$missing" ] && break
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+        if [ -n "$missing" ]; then
+            logger -t "$LOG_TAG" "restore_window_layout: after ${elapsed}s wait, still missing:$missing — partial restore"
+        elif [ $elapsed -gt 0 ]; then
+            logger -t "$LOG_TAG" "restore_window_layout: all snapshot monitors present after ${elapsed}s wait"
+        fi
+        restack=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/resume-display-restack.XXXXXX") || exit 1
+        while IFS=$'	' read -r win desk pid monitor x y w h maxv maxh stack_index is_active _extra; do
+            if [ -z "${maxh:-}" ]; then
+                maxh=$maxv; maxv=$h; h=$w; w=$y; y=$x; x=$monitor; monitor=unknown; stack_index=-1; is_active=0
+            fi
+            stack_index=${stack_index:--1}
+            is_active=${is_active:-0}
+            if [ "$monitor" = unknown ]; then
+                skipped=$((skipped + 1))
+                continue
+            fi
+            if ! monitor_in_list "$monitor" "$active_monitors"; then
+                skipped=$((skipped + 1))
+                continue
+            fi
+            xprop -id "$win" >/dev/null 2>&1 || { gone=$((gone + 1)); continue; }
+            curpid=$(xprop -id "$win" _NET_WM_PID 2>/dev/null | awk '{print $3}')
+            if [ "$pid" != "0" ] && [ -n "$curpid" ] && [ "$curpid" != "$pid" ]; then
+                skipped=$((skipped + 1))
+                continue
+            fi
+
+            wmctrl -ir "$win" -b remove,maximized_vert,maximized_horz >/dev/null 2>&1 || true
+            wmctrl -ir "$win" -e "0,$x,$y,$w,$h" >/dev/null 2>&1 || true
+            if [ "$maxv" = 1 ] && [ "$maxh" = 1 ]; then
+                wmctrl -ir "$win" -b add,maximized_vert,maximized_horz >/dev/null 2>&1 || true
+            elif [ "$maxv" = 1 ]; then
+                wmctrl -ir "$win" -b add,maximized_vert >/dev/null 2>&1 || true
+            elif [ "$maxh" = 1 ]; then
+                wmctrl -ir "$win" -b add,maximized_horz >/dev/null 2>&1 || true
+            fi
+            printf '%s	%s	%s
+' "$stack_index" "$is_active" "$win" >> "$restack"
+            restored=$((restored + 1))
+        done < "$snapshot_path"
+
+        if [ -s "$restack" ]; then
+            while IFS=$'	' read -r _stack _active rwin; do
+                wmctrl -ia "$rwin" >/dev/null 2>&1 || xdotool windowraise "$rwin" >/dev/null 2>&1 || true
+                sleep 0.05
+            done < <(sort -n "$restack")
+            active_restore=$(awk -F '	' '$2 == 1 { win=$3 } END { print win }' "$restack")
+            if [ -n "$active_restore" ]; then
+                wmctrl -ia "$active_restore" >/dev/null 2>&1 || true
+            fi
+        fi
+        rm -f "$restack"
+        logger -t "$LOG_TAG" "restored window layout ($fp): $restored windows, $gone gone, $skipped skipped"
+    ) 9>"$WINDOW_SNAPSHOT_LOCK"
+}
+
+
+dump_window_layout() {
+    printf 'win	desk	pid	monitor	x	y	w	h	maxv	maxh	stack	active	title
+'
+    local win desk pid _wx _wy _ww _wh _host title geom x y w h monitor maxv maxh stack active stack_index is_active monitors
+    stack=$(stacking_list)
+    active=$(active_window_id)
+    monitors=$(connected_monitor_geometries)
+    while read -r win desk pid _wx _wy _ww _wh _host title; do
+        [ -n "$win" ] || continue
+        window_is_restorable "$win" || continue
+        geom=$(window_geometry "$win") || continue
+        read -r x y w h <<< "$geom"
+        monitor=$(monitor_for_window "$x" "$y" "$w" "$h" "$monitors")
+        read -r maxv maxh <<< "$(window_states "$win")"
+        stack_index=$(stack_index_for_window "$win" "$stack")
+        is_active=0
+        if [ "$(normalize_window_id "$win")" = "$active" ]; then
+            is_active=1
+        fi
+        printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s
+'             "$win" "$desk" "$pid" "$monitor" "$x" "$y" "$w" "$h" "$maxv" "$maxh" "$stack_index" "$is_active" "$title"
+    done < <(wmctrl -lpG 2>/dev/null)
+}
+
+
 
 find_stuck_outputs() {
     # Returns names of outputs with EDID cached but no active mode in
@@ -51,32 +459,27 @@ force_kernel_probe() {
 log_state() {
     local label=$1
     {
-        echo "[$label] listmonitors:"
-        xrandr --listmonitors 2>&1 | sed 's/^/  /'
-        echo "[$label] connected/disconnected outputs:"
-        xrandr --query 2>&1 | grep -E '^(eDP|DP|HDMI)' | grep -vE 'disconnected.*\(' |
-            head -10 | sed 's/^/  /'
-        echo "[$label] outputs with EDID block in --verbose:"
-        xrandr --verbose 2>&1 | awk '
-            /^[A-Za-z0-9_-]+ (connected|disconnected)/ {
-                if (name && has_edid) print "  " name " (EDID present)"
-                name=$1; has_edid=0
-            }
-            /EDID:/ { has_edid=1 }
-            END { if (name && has_edid) print "  " name " (EDID present)" }
-        '
+        echo "[$label] root screen:"
+        root_screen_geometry 2>&1 | sed 's/^/  /'
+        echo "[$label] logical monitor count:"
+        active_monitor_count 2>&1 | sed 's/^/  /'
     } | logger -t "$LOG_TAG"
 }
 
 restore_if_externals() {
+    local mode=${1:-auto}
     # Bail fast if NO externals are connected — nothing to restore.
-    n=$(xrandr --listmonitors 2>/dev/null | sed -n 's/Monitors: //p')
-    edid_externals=$(xrandr --verbose 2>/dev/null |
-        grep -B1 'EDID:' | grep -cE '^(DP-|HDMI-)')
-    if [ "${n:-0}" -le 1 ] && [ "${edid_externals:-0}" -eq 0 ]; then
+    n=$(active_monitor_count)
+    if [ "${n:-0}" -le 1 ] && [ "$mode" != force ]; then
         return
     fi
 
+    if [ "$mode" != force ] && display_state_unchanged; then
+        logger -t "$LOG_TAG" "display state unchanged after lock/unlock — native GNOME window state retained, restore skipped"
+        return
+    fi
+
+    pause_snapshots_for "$SNAPSHOT_PAUSE_SECONDS"
     log_state "t+0s trigger"
 
     # Initial settle for the MST flap to start resolving.
@@ -106,38 +509,17 @@ restore_if_externals() {
     logger -t "$LOG_TAG" "monitor count stable at $cur after ${elapsed}s wait"
     log_state "t+$((3 + elapsed))s after stable"
 
-    # Detect outputs the kernel knows about (EDID cached in --verbose) but
-    # that aren't in --listmonitors (no active mode). This is the MST-leaf
-    # stuck case — kernel re-cached EDID but never finished re-fetching
-    # the mode list after the link drop. Only the DP-1 parent's sysfs
-    # status file can force a fresh probe; xrandr at user level can't.
-    stuck=$(xrandr --verbose 2>/dev/null | awk '
-        /^[A-Za-z0-9_-]+ (connected|disconnected)/ {
-            flush(); name=$1; has_edid=0
-        }
-        /EDID:/ { has_edid=1 }
-        END { flush() }
-        function flush() {
-            if (name && has_edid) print name
-            name=""; has_edid=0
-        }
-    ' | while read -r out; do
-        if ! xrandr --listmonitors 2>/dev/null | grep -qE " ${out}\$"; then
-            echo "$out"
-        fi
-    done)
-
-    if [ -n "$stuck" ]; then
-        logger -t "$LOG_TAG" "stuck outputs detected: $stuck — forcing kernel re-probe of DP-1"
-        # The sudoers rule at /etc/sudoers.d/drm-detect allows ONLY this
-        # one exact command, NOPASSWD. The write triggers an MST topology
-        # re-enumeration which cascades down to the leaf sub-connectors.
-        if echo detect | sudo -n /usr/bin/tee /sys/class/drm/card1-DP-1/status >/dev/null 2>&1; then
-            logger -t "$LOG_TAG" "sysfs probe sent — waiting for kernel re-enumeration"
-            # Re-wait for stable state after the kernel re-probe.
+    # If a forced resume/unlock restore still sees fewer than the canonical
+    # three monitors, trigger one kernel DP-MST probe without using
+    # `xrandr --verbose`. Verbose EDID polling can block Xorg in
+    # drm_dp_mst_wait_tx_reply on this dock/monitor chain.
+    if [ "$mode" = force ] && [ "${cur:-0}" -lt 3 ]; then
+        logger -t "$LOG_TAG" "forced restore sees only ${cur:-0} monitors — probing DP-1 once"
+        if force_kernel_probe; then
+            sleep 3
             prev=""; stable=0; elapsed=0
             while [ $elapsed -lt 10 ]; do
-                cur=$(xrandr --listmonitors 2>/dev/null | sed -n 's/Monitors: //p')
+                cur=$(active_monitor_count)
                 if [ "$cur" = "$prev" ] && [ -n "$cur" ]; then
                     stable=$((stable + 1))
                     [ $stable -ge 3 ] && break
@@ -152,7 +534,6 @@ restore_if_externals() {
         else
             logger -t "$LOG_TAG" "sysfs probe FAILED — sudoers rule missing or wrong"
         fi
-        log_state "after sysfs probe"
     fi
 
     # Apply EDID-keyed layout. restore-display-layout sets each panel to
@@ -160,19 +541,83 @@ restore_if_externals() {
     # panel is still missing — it just no-ops on what it can't see.
     "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
     log_state "final"
+    restore_window_layout
+    save_display_state
 }
 
-# System bus — resume from suspend / hibernate
+case "${1:-}" in
+    --snapshot-windows)
+        save_window_layout "manual"
+        exit 0
+        ;;
+    --restore-windows)
+        restore_window_layout
+        exit 0
+        ;;
+    --dump-windows)
+        dump_window_layout
+        exit 0
+        ;;
+    --pause-snapshots)
+        pause_snapshots_for "${2:-$SNAPSHOT_PAUSE_SECONDS}"
+        exit 0
+        ;;
+    --save-display-state)
+        save_display_state
+        exit 0
+        ;;
+    --restore-if-needed)
+        restore_if_externals
+        exit 0
+        ;;
+    --simulate-display-cycle)
+        save_window_layout "manual"
+        pause_snapshots_for "$SNAPSHOT_PAUSE_SECONDS"
+        xset dpms force off >/dev/null 2>&1 || true
+        sleep "${2:-20}"
+        xset dpms force on >/dev/null 2>&1 || true
+        mark_display_dirty
+        restore_if_externals force
+        exit 0
+        ;;
+esac
+
+
+# Initial login restore replaces ~/.config/autostart/restore-display-layout.desktop.
+# Do not restore windows here: there is no reliable pre-login snapshot, and stale
+# snapshots from a previous session should only be used after lock/resume events.
+(
+    sleep 2
+    logger -t "$LOG_TAG" "startup settled — applying display layout"
+    "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
+    snapshot_if_unlocked
+) &
+
+# Keep a quiet last-known-good app-window snapshot while the session is unlocked.
+# GNOME's lock signal can arrive after app windows are hidden from wmctrl, so the
+# restore path must not depend on a just-in-time lock snapshot.
+{
+    while true; do
+        sleep "$SNAPSHOT_INTERVAL_SECONDS"
+        snapshot_if_unlocked
+    done
+} &
+
+# System bus — suspend / resume. Save geometry before sleep, then restore the
+# display topology and surviving windows after resume.
 dbus-monitor --system \
     "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'" |
     while IFS= read -r line; do
-        [[ "$line" == *"boolean false"* ]] && restore_if_externals &
+        [[ "$line" == *"boolean true"* ]] && { save_display_state; save_window_layout "pre-sleep"; } &
+        [[ "$line" == *"boolean false"* ]] && { mark_display_dirty; restore_if_externals force; } &
     done &
 
-# Session bus — GNOME ScreenSaver unlock
+# Session bus — GNOME lock / unlock. F12 is bound to lock, so this path catches
+# monitor sleep caused by the lock screen even when the machine does not suspend.
 dbus-monitor --session \
     "type='signal',interface='org.gnome.ScreenSaver',member='ActiveChanged'" |
     while IFS= read -r line; do
+        [[ "$line" == *"boolean true"* ]] && { save_display_state; save_window_layout "lock"; } &
         [[ "$line" == *"boolean false"* ]] && restore_if_externals &
     done &
 
@@ -185,47 +630,23 @@ dbus-monitor --session \
     "type='signal',interface='org.gnome.Mutter.DisplayConfig',member='MonitorsChanged'" |
     while IFS= read -r line; do
         [[ "$line" == *"member=MonitorsChanged"* ]] || continue
+        mark_display_dirty
         (
             flock -n 9 || exit 0
+            pause_snapshots_for "$SNAPSHOT_PAUSE_SECONDS"
             sleep 3
             logger -t "$LOG_TAG" "MonitorsChanged settled — re-applying layout"
             "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
+            sleep 1
+            restore_window_layout
+            save_display_state
         ) 9>"${XDG_RUNTIME_DIR:-/run/user/$UID}/resume-display-restore-monchanged.lock" &
     done &
 
-# Watchdog — every 15s, check for outputs with EDID present but no active
-# geometry (DP-MST leaf stuck). The post-unlock flap is oscillating: Samsung
-# can come back via dbus-trigger restore, then drop again seconds later from
-# kernel-side renegotiation. The dbus path fires once; the watchdog covers
-# the recurring case.
-#
-# Backoff: after 4 consecutive probes that don't fix it (e.g. Samsung
-# disconnected for real, monitor powered off, cable unplugged), stretch
-# the interval to 60s. Resets immediately when state goes healthy.
-{
-    consecutive_misses=0
-    interval=15
-    while true; do
-        sleep $interval
-        stuck=$(find_stuck_outputs)
-        if [ -n "$stuck" ]; then
-            consecutive_misses=$((consecutive_misses + 1))
-            logger -t "$LOG_TAG" "watchdog: stuck outputs $stuck (miss #$consecutive_misses) — probing"
-            force_kernel_probe
-            sleep 3
-            "$HOME/.local/bin/restore-display-layout" 2>&1 | logger -t "$LOG_TAG"
-            if [ $consecutive_misses -ge 4 ]; then
-                interval=60
-                logger -t "$LOG_TAG" "watchdog: 4+ consecutive misses, backing off to ${interval}s"
-            fi
-        else
-            if [ $consecutive_misses -gt 0 ]; then
-                logger -t "$LOG_TAG" "watchdog: state healthy, reset (was ${consecutive_misses} consecutive misses)"
-            fi
-            consecutive_misses=0
-            interval=15
-        fi
-    done
-} &
+# No periodic EDID watchdog. The earlier 15s watchdog used `xrandr --verbose`
+# to detect stuck MST leaf outputs, but on this Dell + dock + LG/Samsung chain
+# that can block Xorg in drm_dp_mst_wait_tx_reply and make the whole desktop
+# stutter. Recovery is now event-driven through suspend/resume, lock/unlock,
+# and Mutter MonitorsChanged; forced paths can still issue one sysfs probe.
 
 wait

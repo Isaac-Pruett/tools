@@ -1,0 +1,17 @@
+[Unit]
+Description=Re-detect external displays after suspend-resume or screen-unlock
+Documentation=file://%h/tools/lks-dev-env/scripts/resume-display-restore
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/resume-display-restore
+Restart=on-failure
+RestartSec=5
+# Tiny footprint — two dbus-monitor child processes, ~4 MB RSS total.
+MemoryHigh=64M
+MemoryMax=128M
+
+[Install]
+WantedBy=graphical-session.target

@@ -154,6 +154,15 @@ gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" name    'Cycle ghostty anywhere
 gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" command "$HOME/.local/bin/focus-monitor any --class com.mitchellh.ghostty --cycle"
 gsettings set "$SCHEMA:$KB_BASE/focus-term-any/" binding '<Super>Return'
 
+# Super+Ctrl+R → manual window-layout restore. Escape hatch for when the
+# resume-display-restore daemon's automatic path misses (e.g. an MST
+# enumeration edge case where the last monitor comes up AFTER the daemon's
+# 30s wait cap expires). Calls the same restore_window_layout the daemon
+# uses, reading the same snapshot at $XDG_RUNTIME_DIR/resume-display-window-layout.tsv.
+gsettings set "$SCHEMA:$KB_BASE/restore-windows/" name    'Restore window layout from snapshot'
+gsettings set "$SCHEMA:$KB_BASE/restore-windows/" command "$HOME/.local/bin/resume-display-restore --restore-windows"
+gsettings set "$SCHEMA:$KB_BASE/restore-windows/" binding '<Control><Super>r'
+
 # focus-zen / focus-obsidian / focus-slack — Super+Z / Super+O / Super+S
 # Each runs focus-app, which calls `wmctrl -xa <class>` to raise the existing
 # window; if no window exists, it launches the app fresh.
@@ -204,7 +213,7 @@ dconf reset -f "$KB_BASE/custom4/" 2>/dev/null || true
 # Build the array from the explicit list above. ANY future custom binding must
 # be added to BOTH a new slot block AND this array literal.
 gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
-  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-a/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-mon-a/', '$KB_BASE/focus-mon-s/', '$KB_BASE/focus-mon-d/', '$KB_BASE/focus-mon-1/', '$KB_BASE/focus-mon-2/', '$KB_BASE/focus-mon-3/', '$KB_BASE/focus-term-a/', '$KB_BASE/focus-term-s/', '$KB_BASE/focus-term-d/', '$KB_BASE/focus-term-any/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-zen-b/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/', '$KB_BASE/focus-zed/']"
+  "['$KB_BASE/custom0/', '$KB_BASE/custom1/', '$KB_BASE/custom2/', '$KB_BASE/cockpit/', '$KB_BASE/custom5/', '$KB_BASE/custom6/', '$KB_BASE/custom7/', '$KB_BASE/mon-l/', '$KB_BASE/mon-a/', '$KB_BASE/mon-s/', '$KB_BASE/mon-d/', '$KB_BASE/focus-mon-a/', '$KB_BASE/focus-mon-s/', '$KB_BASE/focus-mon-d/', '$KB_BASE/focus-mon-1/', '$KB_BASE/focus-mon-2/', '$KB_BASE/focus-mon-3/', '$KB_BASE/focus-term-a/', '$KB_BASE/focus-term-s/', '$KB_BASE/focus-term-d/', '$KB_BASE/focus-term-any/', '$KB_BASE/restore-windows/', '$KB_BASE/focus-zen/', '$KB_BASE/focus-zen-b/', '$KB_BASE/focus-obsidian/', '$KB_BASE/focus-slack/', '$KB_BASE/focus-zed/']"
 
 # Adding NEW custom-keybinding slots (not just editing existing ones) requires
 # gsd-media-keys to re-read its config. It caches the slot list at startup and
