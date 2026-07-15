@@ -1,0 +1,17 @@
+[Unit]
+Description=Hide X11 mouse cursor after inactivity
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=AUTO_HIDE_CURSOR_IDLE_SECONDS=5
+Environment=AUTO_HIDE_CURSOR_POLL_SECONDS=0.2
+ExecStart=%h/.local/bin/auto-hide-cursor
+Restart=on-failure
+RestartSec=5
+MemoryHigh=64M
+MemoryMax=128M
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Hide the X11 mouse cursor after a short period without pointer movement."""
+
+import atexit
+import ctypes
+import ctypes.util
+import os
+import signal
+import sys
+import time
+
+
+IDLE_SECONDS = float(os.environ.get("AUTO_HIDE_CURSOR_IDLE_SECONDS", "5"))
+POLL_SECONDS = float(os.environ.get("AUTO_HIDE_CURSOR_POLL_SECONDS", "0.2"))
+
+
+def load_library(name: str) -> ctypes.CDLL:
+    path = ctypes.util.find_library(name)
+    if not path:
+        raise RuntimeError(f"missing lib{name}")
+    return ctypes.CDLL(path)
+
+
+x11 = load_library("X11")
+xfixes = load_library("Xfixes")
+
+x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+x11.XOpenDisplay.restype = ctypes.c_void_p
+x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+x11.XDefaultRootWindow.restype = ctypes.c_ulong
+x11.XQueryPointer.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_ulong),
+    ctypes.POINTER(ctypes.c_ulong),
+    ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_uint),
+]
+x11.XQueryPointer.restype = ctypes.c_int
+x11.XFlush.argtypes = [ctypes.c_void_p]
+x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+xfixes.XFixesHideCursor.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+xfixes.XFixesShowCursor.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+
+
+display_name = os.environ.get("DISPLAY")
+display = x11.XOpenDisplay(display_name.encode() if display_name else None)
+if not display:
+    print("auto-hide-cursor: unable to open X display", file=sys.stderr)
+    sys.exit(1)
+
+root = x11.XDefaultRootWindow(display)
+hidden = False
+
+
+def flush() -> None:
+    x11.XFlush(display)
+
+
+def hide_cursor() -> None:
+    global hidden
+    if not hidden:
+        xfixes.XFixesHideCursor(display, root)
+        flush()
+        hidden = True
+
+
+def show_cursor() -> None:
+    global hidden
+    if hidden:
+        xfixes.XFixesShowCursor(display, root)
+        flush()
+        hidden = False
+
+
+def cleanup() -> None:
+    show_cursor()
+    x11.XCloseDisplay(display)
+
+
+def stop(_signum, _frame) -> None:
+    sys.exit(0)
+
+
+atexit.register(cleanup)
+signal.signal(signal.SIGINT, stop)
+signal.signal(signal.SIGTERM, stop)
+
+
+def pointer_position() -> tuple[int, int] | None:
+    root_return = ctypes.c_ulong()
+    child_return = ctypes.c_ulong()
+    root_x = ctypes.c_int()
+    root_y = ctypes.c_int()
+    win_x = ctypes.c_int()
+    win_y = ctypes.c_int()
+    mask = ctypes.c_uint()
+    ok = x11.XQueryPointer(
+        display,
+        root,
+        ctypes.byref(root_return),
+        ctypes.byref(child_return),
+        ctypes.byref(root_x),
+        ctypes.byref(root_y),
+        ctypes.byref(win_x),
+        ctypes.byref(win_y),
+        ctypes.byref(mask),
+    )
+    if not ok:
+        return None
+    return root_x.value, root_y.value
+
+
+print(f"auto-hide-cursor: hiding cursor after {IDLE_SECONDS:g}s of no mouse movement")
+last_position = pointer_position()
+last_activity = time.monotonic()
+
+while True:
+    now = time.monotonic()
+    position = pointer_position()
+    if position is not None and position != last_position:
+        last_position = position
+        last_activity = now
+        show_cursor()
+    elif not hidden and now - last_activity >= IDLE_SECONDS:
+        hide_cursor()
+    time.sleep(POLL_SECONDS)
