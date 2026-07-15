@@ -1,0 +1,13 @@
+theme = "monokai-amoled"
+
+[editor]
+completion-trigger-len = 2
+
+[keys.normal]
+"C-e" = "scroll_down"
+"C-y" = "scroll_up"
+"A-j" = "scroll_down"
+"A-k" = "scroll_up"
+"A-*" = "search_selection_detect_word_boundaries"
+"*" = "search_selection_detect_word_boundaries"
+"A-/" = "@%s<C-r>/<ret>"

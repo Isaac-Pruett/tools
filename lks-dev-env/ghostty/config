@@ -5,7 +5,10 @@
 
 # ─── Font ─────────────────────────────────────────────────────────────────────
 font-family = GeistMono Nerd Font
-font-size = 13
+font-size = 10
+# Always start new windows at the configured size instead of inheriting zoom
+# from the previously focused Ghostty window.
+window-inherit-font-size = false
 
 # ─── Shell ────────────────────────────────────────────────────────────────────
 # Pin explicitly so ghostty always launches zsh regardless of session $SHELL

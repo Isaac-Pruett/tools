@@ -19,7 +19,10 @@ case "${1:-}" in
     ;;
   slack)
     # Prefer deb at /usr/bin/slack (fast cold start); fall back to snap.
+    # wmctrl can't raise snap-Slack's window when it's hidden to tray (GNOME
+    # doesn't add unmapped windows to _NET_CLIENT_LIST); xdotool can.
     wmctrl -xa Slack 2>/dev/null \
+      || xdotool search --classname "slack" windowactivate --sync 2>/dev/null \
       || setsid /usr/bin/slack </dev/null >/dev/null 2>&1 \
       || setsid /snap/bin/slack </dev/null >/dev/null 2>&1 &
     ;;

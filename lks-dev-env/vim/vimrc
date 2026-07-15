@@ -1,0 +1,8 @@
+set hlsearch
+set incsearch
+set ignorecase
+set smartcase
+set wrapscan
+
+highlight Search cterm=bold ctermfg=0 ctermbg=11 gui=bold guifg=#000000 guibg=#FCE566
+highlight IncSearch cterm=bold ctermfg=0 ctermbg=208 gui=bold guifg=#000000 guibg=#FD9353

@@ -34,6 +34,8 @@ in {
     enableZsh = lib.mkEnableOption "zsh dotfile symlinks (.zshrc, .zshenv)" // { default = true; };
     enableStarship = lib.mkEnableOption "starship config symlink" // { default = true; };
     enableGhostty = lib.mkEnableOption "ghostty config symlink" // { default = true; };
+    enableHelix = lib.mkEnableOption "helix config symlinks" // { default = true; };
+    enableVim = lib.mkEnableOption "vim config symlink (.vimrc)" // { default = true; };
     enableNvim = lib.mkEnableOption "neovim (lazyvim) config symlink" // { default = false; };
   };
 
@@ -54,6 +56,13 @@ in {
       })
       (lib.mkIf cfg.enableGhostty {
         ".config/ghostty/config" = link "ghostty/config";
+      })
+      (lib.mkIf cfg.enableHelix {
+        ".config/helix/config.toml" = link "helix/config.toml";
+        ".config/helix/themes/monokai-amoled.toml" = link "helix/themes/monokai-amoled.toml";
+      })
+      (lib.mkIf cfg.enableVim {
+        ".vimrc" = link "vim/vimrc";
       })
       (lib.mkIf cfg.enableNvim {
         ".config/nvim" = link "lazyvim";

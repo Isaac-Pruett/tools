@@ -1,0 +1,23 @@
+# Monokai-on-true-black - inherits from monokai_pro_spectrum and overrides
+# the background to #000000 to match ghostty's AMOLED palette.
+inherits = "monokai_pro_spectrum"
+
+"ui.background" = { bg = "#000000" }
+"ui.background.separator" = { bg = "#000000" }
+"ui.menu" = { bg = "#000000", fg = "#F8F8F2" }
+"ui.popup" = { bg = "#000000" }
+"ui.window" = { bg = "#000000" }
+"ui.statusline" = { fg = "#F8F8F2", bg = "#000000" }
+"ui.statusline.inactive" = { fg = "#75715E", bg = "#000000" }
+"ui.bufferline" = { fg = "#F8F8F2", bg = "#000000" }
+"ui.bufferline.background" = { bg = "#000000" }
+"ui.gutter" = { bg = "#000000" }
+"ui.linenr" = { fg = "#49483E", bg = "#000000" }
+"ui.linenr.selected" = { fg = "#FD971F", bg = "#000000" }
+
+# Helix search uses the active selection for the current match. Select-all
+# workflows like %s use normal/primary selections, so make both high contrast.
+"ui.selection" = { fg = "#000000", bg = "#FCE566" }
+"ui.selection.primary" = { fg = "#000000", bg = "#FD9353", modifiers = ["bold"] }
+"ui.cursor.match" = { fg = "#000000", bg = "#5AD4E6", modifiers = ["bold"] }
+"ui.highlight" = { bg = "#3A3200" }

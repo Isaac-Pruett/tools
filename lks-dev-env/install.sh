@@ -24,6 +24,8 @@ echo "platform: $PLATFORM"
 # ─── Create directories ────────────────────────────────────────────────────────
 mkdir -p \
   "$HOME/.config/kitty" \
+  "$HOME/.config/helix/themes" \
+  "$HOME/.config/systemd/user" \
   "$HOME/.local/bin" \
   "$HOME/.tmux"
 
@@ -34,12 +36,16 @@ ln -sf "$REPO/kitty/kitty.conf"       "$HOME/.config/kitty/kitty.conf"
 ln -sf "$REPO/tmux/tmux.conf"         "$HOME/.tmux.conf"
 ln -sf "$REPO/tmux/keybinds.md"       "$HOME/.tmux/keybinds.md"
 ln -sf "$REPO/starship/starship.toml" "$HOME/.config/starship.toml"
+ln -sf "$REPO/helix/config.toml"       "$HOME/.config/helix/config.toml"
+ln -sf "$REPO/helix/themes/monokai-amoled.toml" "$HOME/.config/helix/themes/monokai-amoled.toml"
+ln -sf "$REPO/vim/vimrc"              "$HOME/.vimrc"
 ln -sf "$REPO/scripts/sessionizer"              "$HOME/.local/bin/sessionizer"
 ln -sf "$REPO/scripts/session-picker"           "$HOME/.local/bin/session-picker"
 ln -sf "$REPO/scripts/gst"                      "$HOME/.local/bin/gst"
 ln -sf "$REPO/scripts/focus-app"                "$HOME/.local/bin/focus-app"
 ln -sf "$REPO/scripts/restore-display-layout"   "$HOME/.local/bin/restore-display-layout"
 ln -sf "$REPO/scripts/resume-display-restore"   "$HOME/.local/bin/resume-display-restore"
+ln -sf "$REPO/systemd/resume-display-restore.service" "$HOME/.config/systemd/user/resume-display-restore.service"
 ln -sf "$REPO/scripts/sync-to-host"             "$HOME/.local/bin/sync-to-host"
 ln -sf "$REPO/scripts/tx-remote"                "$HOME/.local/bin/tx-remote"
 ln -sf "$REPO/scripts/ctx"                      "$HOME/.local/bin/ctx"
